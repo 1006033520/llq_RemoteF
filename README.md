@@ -1,169 +1,94 @@
-# RemoteF - 远程插件分发系统
+# RemoteF 项目说明
 
-一个浏览器插件远程管理平台，支持服务端向客户端下发插件。
+> 远程插件分发系统 - 服务端集中管理，客户端扩展接收
 
-## 功能架构
+## 项目简介
+
+RemoteF 是一个**远程插件分发系统**，通过 Chrome 扩展接收并运行服务端下发的插件，实现插件的集中管理和远程控制。
+
+### 核心能力
+
+- 🌐 **远程分发**：服务端统一管理插件，客户端自动同步
+- ⚡ **实时通信**：WebSocket 双向连接，支持实时消息
+- 🔌 **热更新**：插件更新自动推送，无需手动更新扩展
+- 🎯 **精准控制**：支持向指定客户端推送和执行插件
+
+---
+
+## 系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         服务端                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ 插件管理    │  │ 客户端状态  │  │ WebSocket 服务      │  │
-│  │ 安装/删除   │  │ 在线/离线   │  │ 实时通信             │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│                         服务端 (Node.js)                    │
+│                                                             │
+│   ┌─────────────┐   ┌─────────────┐   ┌─────────────────┐  │
+│   │ 插件管理    │   │ WS 服务     │   │ HTTP API        │  │
+│   │ 安装/删除   │   │ 实时通信    │   │ 管理界面        │  │
+│   └─────────────┘   └─────────────┘   └─────────────────┘  │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
-                              │
-                         WebSocket
-                              │
+                            │ WebSocket
+                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                         客户端（浏览器扩展）                   │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ 配置界面    │  │ 插件接收    │  │ 插件执行环境        │  │
-│  │ 服务端地址  │  │ 接收/存储   │  │ 沙箱运行客户端代码  │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│                    客户端 (Chrome Extension)                  │
+│                                                             │
+│   ┌─────────────┐   ┌─────────────┐   ┌─────────────────┐  │
+│   │ WS 客户端   │   │ 插件管理    │   │ 插件运行环境    │  │
+│   │ 自动重连    │   │ 安装/运行   │   │ 沙箱隔离        │  │
+│   └─────────────┘   └─────────────┘   └─────────────────┘  │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
 
 ## 目录结构
 
 ```
 remoteF/
-├── server/                    # 服务端
-│   ├── src/
-│   │   ├── index.js          # 服务入口
-│   │   ├── plugin-manager.js # 插件管理
-│   │   ├── ws-server.js      # WebSocket服务器
-│   │   └── api-server.js     # HTTP API服务器
-│   ├── plugins/              # 插件存放目录
-│   │   └── example/          # 示例插件
-│   │       ├── manifest.json
-│   │       ├── server.js     # 服务端模块
-│   │       └── client/       # 客户端模块
-│   │           ├── manifest.json
-│   │           └── content.js
-│   └── package.json
+├── docs/                    # 文档目录
+│   ├── usage.md            # 使用指南
+│   ├── design.md           # 设计文档
+│   └── flow.md             # 流程文档
 │
-├── extension/                 # 客户端浏览器扩展
-│   ├── manifest.json
-│   ├── background.js         # 后台脚本
-│   ├── popup/                 # 弹窗界面
-│   │   ├── popup.html
-│   │   └── popup.js
-│   ├── options/               # 配置页面
-│   │   ├── options.html
-│   │   └── options.js
-│   └── content/               # 内容脚本
-│       └── plugin-runtime.js # 插件运行时
+├── server/                  # 服务端
+│   ├── src/
+│   │   ├── index.js        # 服务入口
+│   │   ├── plugin-manager.js
+│   │   ├── ws-server.js
+│   │   └── api-server.js
+│   ├── plugins/            # 插件目录
+│   │   └── example/        # 示例插件
+│   ├── package.json
+│   └── ...
+│
+├── extension/               # Chrome 扩展
+│   ├── src/                 # 源码
+│   │   ├── background.js
+│   │   ├── ws-client.js
+│   │   ├── plugin-manager.js
+│   │   ├── messenger.js
+│   │   └── storage.js
+│   ├── build/              # 构建输出
+│   ├── package.json
+│   ├── esbuild.config.js
+│   └── ...
 │
 └── README.md
 ```
 
-## 通信协议
+---
 
-### WebSocket 消息格式
+## 技术栈
 
-```json
-{
-  "type": "message_type",
-  "payload": {},
-  "timestamp": 1234567890,
-  "clientId": "client_xxx"
-}
-```
+| 组件 | 技术 |
+|------|------|
+| 服务端 | Node.js, Express, ws |
+| 客户端 | Chrome Extension (Manifest V3) |
+| 构建 | esbuild |
+| 通信 | WebSocket + HTTP |
 
-### 消息类型
-
-| 类型 | 方向 | 说明 |
-|------|------|------|
-| `register` | C→S | 客户端注册 |
-| `client_status` | S→C | 推送客户端状态 |
-| `plugin_list` | C→S | 请求插件列表 |
-| `plugin_install` | C→S | 请求安装插件 |
-| `plugin_push` | S→C | 服务端推送插件 |
-| `plugin_run` | S→C | 触发客户端执行插件 |
-| `plugin_result` | C→S | 插件执行结果 |
-
-## 插件开发
-
-### 插件结构
-
-```json
-{
-  "name": "plugin-name",
-  "version": "1.0.0",
-  "description": "插件描述",
-  "author": "作者",
-  "server": {
-    "entry": "server.js",
-    "api": ["api1", "api2"]
-  },
-  "client": {
-    "entry": "client/content.js",
-    "permissions": ["storage", "activeTab"]
-  }
-}
-```
-
-### 服务端模块 API
-
-```javascript
-// server.js
-module.exports = {
-  // 插件元信息
-  manifest: {
-    name: 'plugin-name',
-    version: '1.0.0'
-  },
-
-  // 初始化（插件安装时调用）
-  async onInstall(ctx) {},
-
-  // 启动（插件启用时调用）
-  async onStart(ctx) {},
-
-  // 停止（插件停用时调用）
-  async onStop(ctx) {},
-
-  // 处理来自客户端的消息
-  async onMessage(ctx, message) {},
-
-  // HTTP路由处理
-  routes: {
-    'GET /api/data': async (ctx, req) => {}
-  }
-};
-```
-
-### 客户端模块 API
-
-```javascript
-// client/content.js
-module.exports = {
-  // 客户端模块元信息
-  manifest: {
-    name: 'plugin-name',
-    version: '1.0.0'
-  },
-
-  // 插件配置（用户可在配置界面修改）
-  config: {
-    enabled: true,
-    // 其他配置项...
-  },
-
-  // 初始化
-  init(ctx) {},
-
-  // 执行
-  run(ctx) {},
-
-  // 清理
-  destroy() {},
-
-  // 接收来自服务端的消息
-  onMessage(message) {}
-};
-```
+---
 
 ## 快速开始
 
@@ -173,85 +98,126 @@ module.exports = {
 cd server
 npm install
 npm start
+
+# 服务地址:
+# - HTTP API:  http://localhost:3000
+# - WebSocket: ws://localhost:3000/ws
+# - 管理界面:   http://localhost:3000/admin
 ```
 
-### 2. 安装客户端扩展
+### 2. 构建扩展
 
-1. 打开 Chrome/Edge，访问 `chrome://extensions/`
+```bash
+cd extension
+npm install
+npm run build
+
+# 输出: build/
+```
+
+### 3. 安装扩展
+
+1. 打开 `chrome://extensions/`
 2. 开启「开发者模式」
 3. 点击「加载已解压的扩展程序」
-4. 选择 `extension` 目录
+4. 选择 `extension/build` 目录
 
-### 3. 配置客户端
+### 4. 连接配置
 
-1. 点击扩展图标，打开配置页面
-2. 填写服务端地址（如 `http://localhost:3000`）
+1. 点击扩展图标 → 设置
+2. 填写服务端地址：`http://localhost:3000`
 3. 保存并连接
 
-### 4. 管理插件
-
-服务端启动后，访问 `http://localhost:3000/admin` 进入管理界面。
-
-## 技术栈
-
-- **服务端**: Node.js, Express, ws (WebSocket)
-- **客户端**: Chrome Extension (Manifest V3)
-- **通信**: WebSocket + HTTP
-
 ---
 
-## 项目文件结构
+## 插件开发
+
+### 插件结构
 
 ```
-remoteF/
-├── server/                          # 服务端
-│   ├── src/
-│   │   ├── index.js                # 入口文件
-│   │   ├── plugin-manager.js       # 插件管理器
-│   │   ├── ws-server.js           # WebSocket 服务器
-│   │   └── api-server.js          # HTTP API 服务器
-│   ├── plugins/                   # 插件目录
-│   │   └── example/               # 示例插件
-│   │       ├── manifest.json
-│   │       ├── server.js
-│   │       └── client/
-│   │           ├── manifest.json
-│   │           └── content.js
-│   └── package.json
-│
-├── extension/                       # 浏览器扩展
-│   ├── manifest.json
-│   ├── background.js               # 后台脚本
-│   ├── popup/                      # 弹窗
-│   │   ├── popup.html
-│   │   └── popup.js
-│   ├── options/                    # 设置页
-│   │   ├── options.html
-│   │   └── options.js
-│   └── content/                    # 内容脚本
-│       └── plugin-runtime.js
-│
-└── README.md
+plugins/my-plugin/
+├── manifest.json         # 插件清单
+├── server.js             # 服务端模块（可选）
+└── client/               # 客户端模块
+    ├── manifest.json
+    └── content.js
 ```
 
----
+### 插件清单 (manifest.json)
 
-## 添加图标（可选）
-
-Chrome 扩展需要 PNG 图标。如需添加图标：
-
-1. 创建以下尺寸的 PNG 图标：
-   - `extension/icons/icon16.png` (16x16)
-   - `extension/icons/icon48.png` (48x48)
-   - `extension/icons/icon128.png` (128x128)
-
-2. 更新 `extension/manifest.json`：
 ```json
 {
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "description": "我的插件",
+  "author": "作者名",
+  "server": {
+    "entry": "server.js"
+  },
+  "client": {
+    "entry": "client/content.js",
+    "permissions": ["storage"]
   }
 }
 ```
+
+### 服务端模块 (server.js)
+
+```javascript
+module.exports = {
+  manifest: { name: 'my-plugin', version: '1.0.0' },
+
+  async onInstall(ctx) {},
+  async onStart(ctx) {},
+  async onStop(ctx) {},
+  async onMessage(ctx, message) {},
+
+  routes: {
+    'GET /api/data': async (ctx, req) => {}
+  }
+};
+```
+
+### 客户端模块 (client/content.js)
+
+```javascript
+module.exports = {
+  manifest: { name: 'my-plugin', version: '1.0.0' },
+
+  config: { enabled: true },
+
+  init(ctx) {},
+  async run(ctx) {},
+  destroy() {},
+  onMessage(message) {}
+};
+```
+
+---
+
+## API 接口
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/api/plugins` | GET | 获取插件列表 |
+| `/api/clients` | GET | 获取客户端列表 |
+| `/api/clients/:id/plugins` | POST | 向客户端推送插件 |
+| `/api/clients/:id/plugins/:name/run` | POST | 触发客户端执行插件 |
+| `/admin` | GET | 管理界面 |
+
+---
+
+## 文档导航
+
+| 文档 | 内容 |
+|------|------|
+| [使用指南](./docs/usage.md) | 部署、配置、常见问题 |
+| [设计文档](./docs/design.md) | 架构设计、模块说明、数据模型 |
+| [流程文档](./docs/flow.md) | 连接流程、通信时序、状态流转 |
+
+---
+
+## License
+
+MIT
