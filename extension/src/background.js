@@ -64,10 +64,6 @@ function initMessageHandlers() {
     broadcastToPopup({ type: 'plugin_installed', pluginName: data.pluginName });
   });
 
-  pluginManager.on('uninstalled', (data) => {
-    broadcastToPopup({ type: 'plugin_uninstalled', pluginName: data.pluginName });
-  });
-
   pluginManager.on('error', (data) => {
     broadcastToPopup({ type: 'plugin_error', payload: data });
   });

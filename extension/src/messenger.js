@@ -120,28 +120,7 @@ export function setupMessageHandlers() {
         sendResponse({ success: true });
         break;
 
-      case 'run_plugin': {
-        pluginManager.run(msg.pluginName, (m) => wsClient.send(m), msg.config || {}).then(result => {
-          send({ success: true, ...result });
-        });
-        break;
-      }
-
-      case 'stop_plugin': {
-        pluginManager.stop(msg.pluginName).then(result => {
-          sendResponse({ success: true, ...result });
-        });
-        break;
-      }
-
-      case 'install_plugin':
-        requestPluginInstall(msg.pluginName);
-        sendResponse({ success: true });
-        break;
-
-      case 'uninstall_plugin':
-        pluginManager.uninstall(msg.pluginName).then(() => sendResponse({ success: true }));
-        break;
+      // 插件由服务端控制运行，客户端无权限停止/删除插件
 
       case 'popup_subscribe': {
         addPopupListener(sendResponse);
@@ -153,10 +132,6 @@ export function setupMessageHandlers() {
   });
 }
 
-// 修复：确保 send 在 run_plugin case 中正确使用
-function send(message) {
-  wsClient.send(message);
-}
 
 export default {
   broadcastToPopup,

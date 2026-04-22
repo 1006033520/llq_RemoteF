@@ -1,18 +1,15 @@
 /**
  * RemoteF 插件管理器
- * 提供插件的安装、卸载、运行、状态管理功能
+ * 插件由服务端控制分发，客户端只负责安装和运行
+ * 状态只有两种：已安装(installed) / 异常(error)
  */
 
 import storage from './storage.js';
 
 // ===== 插件状态定义 =====
 export const PluginStatus = {
-  IDLE: 'idle',
-  INSTALLING: 'installing',
-  RUNNING: 'running',
-  ERROR: 'error',
-  STOPPED: 'stopped',
-  UNINSTALLING: 'uninstalling'
+  INSTALLED: 'installed', // 已安装（正常可用）
+  ERROR: 'error'          // 异常（安装失败或运行出错）
 };
 
 // ===== 插件管理器类 =====
@@ -63,7 +60,7 @@ export class PluginManager {
     // 保存代码到存储，供 content script 读取
     await storage.savePluginCode(module.manifest.name, code);
 
-    // 返回一个代理对象，实际执行由 content script 处理
+    // 返回代理对象，实际执行由 content script 处理
     return {
       _isProxy: true,
       _pluginName: module.manifest.name,
@@ -73,13 +70,6 @@ export class PluginManager {
       run: async (ctx, config) => {
         console.log('[PluginManager] 插件运行:', ctx.pluginName);
         return { queued: true, config };
-      },
-      stop: async () => {
-        console.log('[PluginManager] 插件停止:', this._pluginName);
-      },
-      destroy: async () => {
-        console.log('[PluginManager] 插件销毁:', this._pluginName);
-        await storage.removePluginData(this._pluginName);
       }
     };
   }
@@ -87,7 +77,6 @@ export class PluginManager {
   // ===== 插件安装 =====
   async install(pluginName, module, sendFunc) {
     console.log('[PluginManager] 安装插件:', pluginName);
-    this.setStatus(pluginName, PluginStatus.INSTALLING);
 
     try {
       const pluginData = {
@@ -97,7 +86,7 @@ export class PluginManager {
         installedAt: Date.now()
       };
 
-      // 保存元数据
+      // 保存元数据和插件数据
       const meta = await storage.getPluginMeta();
       meta[pluginName] = {
         version: pluginData.version,
@@ -116,7 +105,7 @@ export class PluginManager {
         manifest: module.manifest,
         version: module.manifest.version,
         instance,
-        status: PluginStatus.IDLE,
+        status: PluginStatus.INSTALLED,
         error: null,
         lastRun: null,
         runCount: 0,
@@ -129,7 +118,6 @@ export class PluginManager {
         await instance.init(ctx);
       }
 
-      this.setStatus(pluginName, PluginStatus.IDLE);
       console.log('[PluginManager] 插件安装成功:', pluginName);
       this.emit('installed', { pluginName, version: pluginData.version });
 
@@ -142,34 +130,7 @@ export class PluginManager {
     }
   }
 
-  // ===== 插件卸载 =====
-  async uninstall(pluginName) {
-    console.log('[PluginManager] 卸载插件:', pluginName);
-    this.setStatus(pluginName, PluginStatus.UNINSTALLING);
-
-    const plugin = this.plugins.get(pluginName);
-    if (plugin?.instance?.destroy) {
-      try {
-        await plugin.instance.destroy();
-      } catch (err) {
-        console.error('[PluginManager] 插件销毁失败:', err);
-      }
-    }
-
-    this.plugins.delete(pluginName);
-    this.contexts.delete(pluginName);
-
-    // 清理存储
-    const meta = await storage.getPluginMeta();
-    delete meta[pluginName];
-    await storage.savePluginMeta(meta);
-    await storage.removePluginData(pluginName);
-
-    console.log('[PluginManager] 插件已卸载:', pluginName);
-    this.emit('uninstalled', { pluginName });
-  }
-
-  // ===== 插件运行 =====
+  // ===== 插件运行（由服务端触发）=====
   async run(pluginName, sendFunc, config = {}) {
     console.log('[PluginManager] 运行插件:', pluginName);
 
@@ -180,16 +141,15 @@ export class PluginManager {
       return { success: false, error };
     }
 
-    this.setStatus(pluginName, PluginStatus.RUNNING);
-
     try {
       const ctx = this.createContext(pluginName, sendFunc);
       const result = await plugin.instance.run(ctx, config);
 
       plugin.lastRun = Date.now();
       plugin.runCount = (plugin.runCount || 0) + 1;
-      this.setStatus(pluginName, PluginStatus.IDLE);
 
+      // 运行完成后回到已安装状态
+      this.setStatus(pluginName, PluginStatus.INSTALLED);
       this.emit('run', { pluginName, result });
       return { success: true, result };
     } catch (err) {
@@ -198,26 +158,6 @@ export class PluginManager {
       this.emit('error', { pluginName, error: err.message });
       return { success: false, error: err.message };
     }
-  }
-
-  // ===== 插件停止 =====
-  async stop(pluginName) {
-    const plugin = this.plugins.get(pluginName);
-    if (!plugin) {
-      return { success: false, error: '插件不存在' };
-    }
-
-    if (plugin.instance?.stop) {
-      try {
-        await plugin.instance.stop();
-      } catch (err) {
-        console.error('[PluginManager] 停止插件失败:', err);
-      }
-    }
-
-    this.setStatus(pluginName, PluginStatus.STOPPED);
-    this.emit('stopped', { pluginName });
-    return { success: true };
   }
 
   // ===== 上下文创建 =====
@@ -331,7 +271,7 @@ export class PluginManager {
               manifest: data.manifest,
               version: data.version,
               instance,
-              status: PluginStatus.IDLE,
+              status: PluginStatus.INSTALLED,
               error: null,
               lastRun: null,
               runCount: 0,
