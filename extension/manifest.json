@@ -8,7 +8,9 @@
     "activeTab",
     "tabs",
     "scripting",
-    "webNavigation"
+    "webNavigation",
+    "userScripts",
+    "debugger"
   ],
   "host_permissions": [
     "http://*/*",

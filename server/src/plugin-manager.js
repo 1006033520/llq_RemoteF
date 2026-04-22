@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ServerAPI } from './api.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +16,19 @@ export class PluginManager {
     this.pluginsDir = path.resolve(__dirname, '..', pluginsDir);
     this.plugins = new Map(); // name -> PluginInstance
     this.instances = new Map(); // clientId -> Set<pluginName>
+
+    // 服务端 API 实例
+    this.serverApi = new ServerAPI({ pluginManager: this });
+
+    // Express app 引用（延迟注入，用于注册插件路由）
+    this.app = null;
+  }
+
+  /**
+   * 注入 Express app 引用（在服务端启动时调用）
+   */
+  setApp(app) {
+    this.app = app;
   }
 
   /**
@@ -82,6 +96,11 @@ export class PluginManager {
     this.plugins.set(name, plugin);
     console.log(`✅ 插件 ${name} 已加载`);
 
+    // 如果插件有 setupRoutes 方法，自动注册路由
+    if (plugin.serverModule?.setupRoutes && this.app) {
+      plugin.serverModule.setupRoutes(this.app, this);
+    }
+
     return plugin;
   }
 
@@ -93,7 +112,7 @@ export class PluginManager {
     if (!plugin) return false;
 
     // 通知所有客户端卸载
-    const ctx = this.createContext(null, null);
+    const ctx = this.createContext(null, null, name);
     if (plugin.serverModule?.onStop) {
       try {
         await plugin.serverModule.onStop(ctx);
@@ -222,17 +241,106 @@ export class PluginManager {
 
   /**
    * 创建插件执行上下文
+   * @param {string} clientId - 客户端 ID
+   * @param {WebSocket} ws - WebSocket 连接
+   * @param {string} pluginName - 当前插件名（系统注入，插件无法指定）
    */
-  createContext(clientId, ws) {
+  createContext(clientId, ws, pluginName) {
     const self = this;
     return {
       clientId,
       ws,
+      pluginName,
+
+      // 统一 API 接口（推荐使用）
+      // 核心原则：插件只能与同名客户端插件通讯，pluginName 由系统自动绑定
+      api: {
+        /**
+         * 发送消息给指定客户端的同名插件
+         */
+        sendToClient(targetClientId, message) {
+          return self.serverApi.sendToClient(targetClientId, pluginName, message);
+        },
+
+        /**
+         * 广播消息给所有在线客户端的同名插件
+         */
+        broadcast(message, filter) {
+          return self.serverApi.broadcast(pluginName, message, filter);
+        },
+
+        /**
+         * 广播给安装了本插件的所有客户端
+         */
+        broadcastToPluginClients(message) {
+          return self.serverApi.broadcastToPluginClients(pluginName, message);
+        },
+
+        /**
+         * 获取所有在线客户端
+         */
+        getClients() {
+          return self.serverApi.getClients();
+        },
+
+        /**
+         * 获取指定客户端信息
+         */
+        getClientInfo(targetClientId) {
+          return self.serverApi.getClientInfo(targetClientId);
+        },
+
+        /**
+         * 检查客户端是否在线
+         */
+        isClientOnline(targetClientId) {
+          return self.serverApi.isClientOnline(targetClientId);
+        },
+
+        /**
+         * 获取服务端连接状态
+         */
+        getConnectionStatus() {
+          return self.serverApi.getConnectionStatus();
+        },
+
+        /**
+         * 获取插件存储
+         */
+        getStorage(key) {
+          return self.serverApi.getStorage(pluginName, key);
+        },
+
+        /**
+         * 设置插件存储
+         */
+        setStorage(key, value) {
+          return self.serverApi.setStorage(pluginName, key, value);
+        },
+
+        /**
+         * 删除插件存储
+         */
+        removeStorage(key) {
+          return self.serverApi.removeStorage(pluginName, key);
+        },
+
+        /**
+         * 获取插件整个存储对象
+         */
+        getStore() {
+          return self.serverApi.getStore(pluginName);
+        }
+      },
+
+      // 保留旧接口兼容
       server: {
-        send(clientId, type, payload) {
-          const conn = this.getConnection(clientId);
-          if (conn) {
-            conn.send(JSON.stringify({ type, payload, timestamp: Date.now() }));
+        send(targetClientId, type, payload) {
+          // 使用注入的发送函数
+          if (self._sendToClient) {
+            self._sendToClient(targetClientId, type, payload);
+          } else if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type, payload, timestamp: Date.now() }));
           }
         },
         getConnection(id) {
@@ -240,7 +348,9 @@ export class PluginManager {
           return null;
         },
         broadcast(type, payload, filter) {
-          // 由 WsServer 提供
+          if (self._broadcast) {
+            self._broadcast(type, payload, filter);
+          }
         }
       },
       plugin: {
@@ -274,7 +384,7 @@ export class PluginManager {
     for (const [name, plugin] of this.plugins) {
       if (plugin.serverModule?.onClientEvent) {
         try {
-          const ctx = this.createContext(clientId, null);
+          const ctx = this.createContext(clientId, null, name);
           await plugin.serverModule.onClientEvent(ctx, event, clientId);
         } catch (err) {
           console.error(`插件 ${name} onClientEvent 失败:`, err);
@@ -290,7 +400,7 @@ export class PluginManager {
     const plugin = this.plugins.get(pluginName);
     if (!plugin?.serverModule) return;
 
-    const ctx = this.createContext(clientId, null);
+    const ctx = this.createContext(clientId, null, pluginName);
     if (plugin.serverModule.onMessage) {
       await plugin.serverModule.onMessage(ctx, message);
     }

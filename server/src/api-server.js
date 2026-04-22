@@ -5,6 +5,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -137,13 +138,6 @@ export class ApiServer {
       res.json({ success: true, message: 'Install request sent' });
     });
 
-    // 触发客户端执行插件
-    this.app.post('/api/clients/:clientId/plugins/:pluginName/run', (req, res) => {
-      const { config } = req.body;
-      this.wsServer?.triggerPluginRun(req.params.clientId, req.params.pluginName, config);
-      res.json({ success: true, message: 'Run request sent' });
-    });
-
     // ===== 管理界面 =====
     this.app.get('/admin', (req, res) => {
       res.send(this.generateAdminUI());
@@ -155,6 +149,66 @@ export class ApiServer {
 
     this.app.get('/admin/plugins', (req, res) => {
       res.json(this.pluginManager.list());
+    });
+
+    // 插件入口页
+    this.app.get('/admin/plugin/:name', (req, res) => {
+      const plugin = this.pluginManager.get(req.params.name);
+      if (!plugin) {
+        return res.status(404).send('Plugin not found');
+      }
+
+      const pageFile = plugin.manifest.server?.page;
+      if (!pageFile) {
+        return res.status(404).send('Plugin has no entry page');
+      }
+
+      const pagePath = path.join(plugin.path, pageFile);
+      if (!fs.existsSync(pagePath)) {
+        return res.status(404).send('Plugin page file not found');
+      }
+
+      res.sendFile(pagePath);
+    });
+
+    // 插件入口页 API 数据
+    this.app.get('/admin/plugin/:name/data', (req, res) => {
+      const plugin = this.pluginManager.get(req.params.name);
+      if (!plugin) {
+        return res.status(404).json({ error: 'Plugin not found' });
+      }
+
+      const onlineClients = this.wsServer ? Array.from(this.wsServer.clients?.entries?.() || [])
+        .filter(([, ws]) => ws.isAlive && plugin.enabled.has(ws.clientId))
+        .map(([id, ws]) => ({
+          clientId: ws.clientId || id,
+          name: ws.clientName || 'Unknown',
+          platform: ws.platform
+        })) : [];
+
+      res.json({
+        name: plugin.name,
+        version: plugin.version,
+        description: plugin.description,
+        status: plugin.status,
+        enabledClients: Array.from(plugin.enabled),
+        onlineClients
+      });
+    });
+
+    // 插件静态资源
+    this.app.get('/admin/plugin/:name/assets/*', (req, res) => {
+      const plugin = this.pluginManager.get(req.params.name);
+      if (!plugin) {
+        return res.status(404).send('Plugin not found');
+      }
+
+      const assetPath = path.join(plugin.path, 'assets', req.params[0]);
+      if (!fs.existsSync(assetPath)) {
+        return res.status(404).send('Asset not found');
+      }
+
+      res.sendFile(assetPath);
     });
   }
 
@@ -388,7 +442,7 @@ export class ApiServer {
         return;
       }
       list.innerHTML = plugins.map(p => \`
-        <div class="plugin-item">
+        <div class="plugin-item" style="cursor:pointer" onclick="window.location.href='/admin/plugin/\${p.name}'">
           <div class="client-info">
             <h3>\${p.name}</h3>
             <p>v\${p.version} | \${p.description || '无描述'}</p>
@@ -397,6 +451,7 @@ export class ApiServer {
             <span class="status \${p.status === 'loaded' ? 'online' : 'offline'}">
               \${p.status}
             </span>
+            <span style="color:#64748b;margin-left:0.5rem">→</span>
           </div>
         </div>
       \`).join('');

@@ -28,3 +28,6 @@ server/out/
 
 # Server 构建
 server/build/
+
+# 测试数据
+server/data/

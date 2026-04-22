@@ -8,8 +8,14 @@ import cors from 'cors';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PluginManager } from './plugin-manager.js';
 import { ApiServer } from './api-server.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const CONFIG = {
   HTTP_PORT: process.env.PORT || 3000,
@@ -23,6 +29,43 @@ class RemoteFServer {
     this.apiServer = new ApiServer(this.pluginManager);
     this.clients = new Map();
     this.clientsByName = new Map();
+
+    // 给 PluginManager 注入消息发送能力
+    this.pluginManager._sendToClient = (clientId, type, payload) => {
+      this.sendToClient(clientId, type, payload);
+    };
+    this.pluginManager._broadcast = (type, payload, filter) => {
+      this.broadcast(type, payload, filter);
+    };
+
+    // 给 ServerAPI 注入 wsServer 依赖
+    this.pluginManager.serverApi.inject({
+      sendToClient: (clientId, type, payload) => {
+        this.sendToClient(clientId, type, payload);
+      },
+      broadcast: (type, payload, filter) => {
+        this.broadcast(type, payload, filter);
+      },
+      getClientInfo: (clientId) => {
+        const ws = this.clients.get(clientId);
+        if (!ws) return null;
+        return {
+          clientId,
+          name: ws.clientName,
+          version: ws.clientVersion,
+          platform: ws.platform,
+          isOnline: ws.isAlive
+        };
+      },
+      getAllClients: () => {
+        return Array.from(this.clients.entries()).map(([id, ws]) => ({
+          clientId: ws.clientId || id,
+          name: ws.clientName || 'Unknown',
+          platform: ws.platform,
+          isOnline: ws.isAlive
+        }));
+      }
+    });
   }
 
   async start() {
@@ -82,6 +125,9 @@ class RemoteFServer {
 
     // 设置 API 路由
     this.setupRoutes(app);
+
+    // 给 PluginManager 注入 app 引用（用于插件注册路由）
+    this.pluginManager.setApp(app);
 
     // 加载插件
     await this.pluginManager.loadAll();
@@ -153,16 +199,8 @@ class RemoteFServer {
         module: clientModule
       });
 
+
       res.json({ success: true, message: 'Plugin sent' });
-    });
-
-    // 触发客户端执行插件
-    app.post('/api/clients/:clientId/plugins/:pluginName/run', (req, res) => {
-      const { clientId, pluginName } = req.params;
-      const { config } = req.body;
-
-      this.sendToClient(clientId, 'plugin_run', { pluginName, config: config || {} });
-      res.json({ success: true, message: 'Run request sent' });
     });
 
     // 管理界面
@@ -181,6 +219,64 @@ class RemoteFServer {
 
     app.get('/admin/plugins', (req, res) => {
       res.json(this.pluginManager.list());
+    });
+
+    // 插件入口页
+    app.get('/admin/plugin/:name', (req, res) => {
+      const plugin = this.pluginManager.get(req.params.name);
+      if (!plugin) {
+        return res.status(404).send('Plugin not found');
+      }
+
+      const pageFile = plugin.manifest.server?.page;
+      if (!pageFile) {
+        return res.status(404).send('Plugin has no entry page');
+      }
+
+      const pagePath = path.join(plugin.path, pageFile);
+      if (!fs.existsSync(pagePath)) {
+        return res.status(404).send('Plugin page file not found');
+      }
+
+      res.sendFile(pagePath);
+    });
+
+    // 插件入口页 API 数据（给入口页 JS 调用）
+    app.get('/admin/plugin/:name/data', (req, res) => {
+      const plugin = this.pluginManager.get(req.params.name);
+      if (!plugin) {
+        return res.status(404).json({ error: 'Plugin not found' });
+      }
+
+      res.json({
+        name: plugin.name,
+        version: plugin.version,
+        description: plugin.description,
+        status: plugin.status,
+        enabledClients: Array.from(plugin.enabled),
+        onlineClients: Array.from(this.clients.entries())
+          .filter(([, ws]) => ws.isAlive && plugin.enabled.has(ws.clientId))
+          .map(([id, ws]) => ({
+            clientId: ws.clientId || id,
+            name: ws.clientName || 'Unknown',
+            platform: ws.platform
+          }))
+      });
+    });
+
+    // 插件静态资源（JS/CSS 等放在插件目录的 assets/ 下）
+    app.get('/admin/plugin/:name/assets/*', (req, res) => {
+      const plugin = this.pluginManager.get(req.params.name);
+      if (!plugin) {
+        return res.status(404).send('Plugin not found');
+      }
+
+      const assetPath = path.join(plugin.path, 'assets', req.params[0]);
+      if (!fs.existsSync(assetPath)) {
+        return res.status(404).send('Asset not found');
+      }
+
+      res.sendFile(assetPath);
     });
   }
 
@@ -225,9 +321,12 @@ class RemoteFServer {
         break;
       }
 
-      case 'plugin_run_result':
-        console.log(`📨 插件 ${payload.pluginName} 结果:`, payload.success ? '成功' : '失败');
+      case 'plugin_message': {
+        // 客户端插件消息 → 服务端插件处理
+        const clientId = ws.clientId || currentId;
+        await this.pluginManager.handlePluginMessage(payload.pluginName, clientId, payload);
         break;
+      }
     }
   }
 
@@ -252,6 +351,15 @@ class RemoteFServer {
     }
   }
 
+  broadcast(type, payload, filter) {
+    const msg = JSON.stringify({ type, payload, timestamp: Date.now() });
+    for (const [id, ws] of this.clients) {
+      if (ws.readyState === 1 && (!filter || filter(ws, id))) {
+        ws.send(msg);
+      }
+    }
+  }
+
   generateAdminUI() {
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -273,6 +381,8 @@ class RemoteFServer {
     .btn:hover { background: #2563eb; }
     .refresh { margin-top: 1rem; color: #64748b; font-size: 0.8rem; }
     .empty { text-align: center; padding: 2rem; color: #64748b; }
+    .plugin-clickable { cursor: pointer; transition: background 0.15s; }
+    .plugin-clickable:hover { background: #1e293b; }
   </style>
 </head>
 <body>
@@ -300,7 +410,7 @@ class RemoteFServer {
         : '<div class="empty">暂无连接</div>';
 
       document.getElementById('plugins').innerHTML = plugins.length
-        ? plugins.map(p => '<div class="item"><span>' + p.name + '</span><span style="color:#64748b">v' + p.version + '</span></div>').join('')
+        ? plugins.map(p => '<div class="item plugin-clickable" onclick="window.location.href=\\'/admin/plugin/' + p.name + '\\'" title="点击进入插件入口页"><span>' + p.name + '</span><span style="color:#64748b">v' + p.version + ' →</span></div>').join('')
         : '<div class="empty">暂无插件</div>';
 
       document.getElementById('time').textContent = '更新: ' + new Date().toLocaleTimeString();

@@ -1,8 +1,9 @@
 {
   "name": "example",
-  "version": "1.0.0",
-  "description": "示例插件客户端模块",
+  "version": "1.8.0",
+  "description": "网络请求监控客户端模块",
   "permissions": ["storage"],
+  "matches": ["http://localhost:8888/*"],
   "config": {
     "enabled": true,
     "autoReport": false

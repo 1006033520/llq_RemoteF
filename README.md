@@ -215,6 +215,7 @@ module.exports = {
 | [使用指南](./docs/usage.md) | 部署、配置、常见问题 |
 | [设计文档](./docs/design.md) | 架构设计、模块说明、数据模型 |
 | [流程文档](./docs/flow.md) | 连接流程、通信时序、状态流转 |
+| [插件开发指南](./docs/plugin-development.md) | 插件结构、清单配置、API 参考、完整示例 |
 
 ---
 

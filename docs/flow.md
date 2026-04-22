@@ -20,36 +20,36 @@
 └────┬────┘                              └────┬────┘
      │                                        │
      │  1. 用户点击"连接"或启用"自动连接"        │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │                                        │
      │  2. WebSocket 连接建立                   │
-     │<────────────────────────────────────────│
+     │<────────────────────────────────────────
      │                                        │
      │  3. 服务端发送 connected                 │
-     │<────────────────────────────────────────│
+     │<────────────────────────────────────────
      │                                        │
      │  4. 客户端发送 register                   │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │   {                                      │
      │     type: "register",                   │
      │     payload: { name, version, platform, │
      │                  extensions }            │
      │   }                                      │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │                                        │
      │  5. 服务端发送 registered                 │
-     │<────────────────────────────────────────│
+     │<────────────────────────────────────────
      │   { type: "registered",                 │
      │     payload: { success: true,           │
      │                plugins: [...] } }       │
      │                                        │
      │  6. 客户端请求 plugin_list               │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │   { type: "plugin_list" }               │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │                                        │
      │  7. 服务端发送 plugin_list               │
-     │<────────────────────────────────────────│
+     │<────────────────────────────────────────
      │   { type: "plugin_list",                │
      │     payload: { plugins: [...] } }       │
      │                                        │
@@ -85,21 +85,21 @@
 └────┬────┘                              └────┬────┘
      │                                        │
      │  1. 用户点击"安装"插件                  │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │   { type: "plugin_install",             │
      │     payload: { pluginName: "xxx" } }   │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │                                        │
      │  2. 服务端查找插件                      │
      │                                        │
      │  3. 服务端发送 plugin_push              │
-     │<────────────────────────────────────────│
+     │<────────────────────────────────────────
      │   { type: "plugin_push",                │
      │     payload: { pluginName, module } }  │
      │                                        │
-     │  4. 客户端安装插件                      │
+     │  4. 客户端安装插件到 storage            │
      │  5. 发送 plugin_install_result          │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │   { type: "plugin_install_result",     │
      │     payload: { pluginName, success } } │
      │                                        │
@@ -116,13 +116,13 @@
      │                         [管理员在 /admin 界面选择客户端安装插件]
      │                                        │
      │  1. 服务端发送 plugin_push              │
-     │<────────────────────────────────────────│
+     │<────────────────────────────────────────
      │   { type: "plugin_push",                │
      │     payload: { pluginName, module } }  │
      │                                        │
-     │  2. 客户端安装插件                      │
+     │  2. 客户端安装插件到 storage            │
      │  3. 发送 plugin_install_result         │
-     │────────────────────────────────────────>│
+     │────────────────────────────────────────>
      │   { type: "plugin_install_result",     │
      │     payload: { pluginName, success } } │
      │                                        │
@@ -133,51 +133,35 @@
 
 ## 插件运行流程
 
-### 客户端触发
+### 自动运行（默认）
+
+客户端插件在页面加载时**自动运行**，无需手动触发：
+
+```
+┌─────────┐     ┌──────────────┐     ┌─────────┐
+│ 页面加载 │────>│ Content Script │────>│ 插件运行 │
+└─────────┘     └──────────────┘     └─────────┘
+                        │
+                        ▼
+               1. 从 storage 读取已安装插件
+               2. 执行 init()（如果有）
+               3. 执行 run()（如果有）
+               4. SPA 导航时自动重新运行
+```
+
+### 手动重运行
+
+可以通过 background 发送 `plugin_rerun` 消息手动触发插件重新运行：
 
 ```
 ┌─────────┐                              ┌─────────┐
-│  客户端  │                              │  服务端  │
+│ Background│                            │ Content  │
 └────┬────┘                              └────┬────┘
+     │  plugin_rerun                         │
+     │───────────────────────────────────────>
      │                                        │
-     │  1. 用户点击"运行"或定时触发             │
-     │────────────────────────────────────────>│
-     │   { type: "plugin_run_request",         │
-     │     payload: { pluginName, config } }   │
-     │────────────────────────────────────────>│
-     │                                        │
-     │  2. 服务端转发或处理                    │
-     │  3. 返回 plugin_run_result             │
-     │<────────────────────────────────────────│
-     │   { type: "plugin_run_result",          │
-     │     payload: { pluginName, success,    │
-     │                result, error } }        │
-     │                                        │
-     ▼                                        ▼
-```
-
-### 服务端触发
-
-```
-┌─────────┐                              ┌─────────┐
-│  客户端  │                              │  服务端  │
-└────┬────┘                              └────┬────┘
-     │                                        │
-     │                         [管理员在 /admin 触发]
-     │                                        │
-     │  1. 服务端发送 plugin_run               │
-     │<────────────────────────────────────────│
-     │   { type: "plugin_run",                │
-     │     payload: { pluginName, config } }  │
-     │                                        │
-     │  2. 客户端执行插件                      │
-     │  3. 发送 plugin_run_result             │
-     │────────────────────────────────────────>│
-     │   { type: "plugin_run_result",          │
-     │     payload: { pluginName, success,    │
-     │                result, error } }        │
-     │                                        │
-     ▼                                        ▼
+     │<───────────────────────────────────────
+     │         (插件重新运行)
 ```
 
 ---
@@ -191,7 +175,7 @@
 {
   type: string,      // 消息类型
   payload: any,      // 消息数据
-  timestamp: number // 时间戳（服务端添加）
+  timestamp: number  // 时间戳（服务端添加）
 }
 ```
 
@@ -205,10 +189,9 @@
 | `plugin_install` | C→S | 安装请求 |
 | `plugin_push` | S→C | 插件推送 |
 | `plugin_install_result` | C→S | 安装结果 |
-| `plugin_run` | S→C | 运行触发 |
-| `plugin_run_request` | C→S | 运行请求 |
-| `plugin_run_result` | 双向 | 运行结果 |
 | `plugin_message` | 双向 | 插件间通信 |
+| `plugin_unload` | B→C | 卸载插件 |
+| `plugin_rerun` | B→C | 重运行插件 |
 
 ---
 
@@ -253,34 +236,30 @@ sequenceDiagram
     Note over C: 所有插件同步完成
 ```
 
-### 插件运行完整时序
+### 插件自动运行时序
 
 ```mermaid
 sequenceDiagram
-    participant User as 用户/管理员
-    participant UI as 扩展界面
-    participant BG as Background
-    participant WS as WS服务端
-    participant Plugin as 插件模块
+    participant Page as 网页加载
+    participant Runtime as Content Script
+    participant Plugin as 插件代码
 
-    User->>UI: 点击"运行"
-    UI->>BG: run_plugin(pluginName, config)
-    BG->>BG: pluginManager.run()
+    Page->>Runtime: DOMContentLoaded
+    Runtime->>Runtime: 从 storage 获取已安装插件
+    Runtime->>Plugin: eval(插件代码)
+    Plugin-->>Runtime: 插件实例
 
-    Note over BG: 1. 更新状态为 running
-    BG->>BG: 2. 调用插件 run(ctx)
+    alt 有 init 方法
+        Runtime->>Plugin: init(context)
+        Plugin-->>Runtime: init 完成
+    end
 
-    BG->>WS: plugin_message(pluginName, msg)
-    WS->>WS: 广播/路由消息
-    WS-->>BG: 消息响应
+    alt 有 run 方法
+        Runtime->>Plugin: run(context)
+        Plugin-->>Runtime: run 完成
+    end
 
-    Plugin-->>BG: 执行完成
-
-    Note over BG: 3. 更新状态为 installed
-    BG->>BG: 4. 返回结果
-
-    BG-->>UI: { success, result }
-    UI-->>User: 显示结果
+    Note over Runtime: SPA 导航时自动重新运行
 ```
 
 ---
@@ -310,7 +289,7 @@ sequenceDiagram
               └──────────────┘
 ```
 
-### 插件运行状态
+### 插件状态
 
 ```
     ┌──────────────┐
@@ -319,18 +298,13 @@ sequenceDiagram
            │ install()
            ▼
     ┌──────────────┐
-    │   installed   │◄────┐
-    └──────┬───────┘      │
-           │ run()         │ run() (重新运行)
-           ▼               │
-    ┌──────────────┐       │
-    │   running     │──────┘
-    └──────┬───────┘
-           │ complete / stop()
-           ▼
-    ┌──────────────┐
     │   installed   │
     └──────┬───────┘
+           │ 页面加载时
+           ▼
+    ┌──────────────┐
+    │   running     │──> 完成后回到 installed
+    └──────────────┘
            │ uninstall()
            ▼
     ┌──────────────┐
@@ -355,5 +329,4 @@ sequenceDiagram
 | 错误类型 | 处理方式 |
 |----------|----------|
 | 安装失败 | 记录错误，通知用户 |
-| 运行超时 | 30秒超时，强制停止 |
-| 运行异常 | 捕获错误，返回错误信息 |
+| 运行异常 | 捕获错误，记录日志 |

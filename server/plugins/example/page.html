@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RemoteF - Example 插件</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+    /* 顶部导航 */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .back-btn {
+      padding: 0.5rem 1rem;
+      background: #334155;
+      border: none;
+      border-radius: 0.5rem;
+      color: #e2e8f0;
+      cursor: pointer;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .back-btn:hover { background: #475569; }
+    .header h1 { font-size: 1.5rem; flex: 1; }
+    .header .version {
+      padding: 0.25rem 0.75rem;
+      background: #1e293b;
+      border-radius: 1rem;
+      font-size: 0.8rem;
+      color: #818cf8;
+    }
+
+    /* 统计卡片 */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 1.25rem;
+      text-align: center;
+    }
+    .stat-card .value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #818cf8;
+    }
+    .stat-card .label {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-top: 0.25rem;
+    }
+
+    /* 面板 */
+    .panel {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .panel-header h2 { font-size: 1.1rem; }
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #475569; color: white; }
+    .btn-secondary:hover { background: #64748b; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #15803d; }
+
+    /* 客户端列表 */
+    .client-list { display: grid; gap: 0.5rem; }
+    .client-item {
+      background: #0f172a;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .client-name { font-weight: 500; }
+    .client-id { font-size: 0.75rem; color: #64748b; margin-left: 0.5rem; }
+    .status-badge {
+      padding: 0.2rem 0.6rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-badge.online { background: #166534; color: #86efac; }
+    .status-badge.offline { background: #7f1d1d; color: #fca5a5; }
+
+    /* 请求记录表 */
+    .request-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .request-table th {
+      text-align: left;
+      padding: 0.75rem;
+      border-bottom: 1px solid #334155;
+      color: #64748b;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .request-table td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid #1e293b;
+      font-size: 0.85rem;
+    }
+    .request-table tr:hover td { background: #0f172a; }
+    .method-badge {
+      padding: 0.15rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      min-width: 36px;
+      text-align: center;
+      display: inline-block;
+    }
+    .method-GET { background: #166534; color: #86efac; }
+    .method-POST { background: #1e40af; color: #93c5fd; }
+    .method-PUT { background: #854d0e; color: #fde047; }
+    .method-DELETE { background: #991b1b; color: #fca5a5; }
+    .method-PATCH { background: #6b21a8; color: #d8b4fe; }
+
+    .url-cell {
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #94a3b8;
+    }
+    .status-cell { font-weight: 500; }
+    .status-2xx { color: #86efac; }
+    .status-3xx { color: #fde047; }
+    .status-4xx { color: #fca5a5; }
+    .status-5xx { color: #f87171; }
+
+    /* 消息发送 */
+    .send-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .send-form select, .send-form input {
+      padding: 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .send-form select { min-width: 120px; }
+    .send-form input { flex: 1; }
+
+    /* 空状态 */
+    .empty {
+      text-align: center;
+      padding: 2rem;
+      color: #64748b;
+    }
+
+    /* 自动刷新指示 */
+    .refresh-info {
+      text-align: center;
+      color: #475569;
+      font-size: 0.8rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/admin" class="back-btn">← 返回</a>
+      <h1 id="plugin-name">Example Plugin</h1>
+      <span class="version" id="plugin-version">v1.5.0</span>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="value" id="stat-online">0</div>
+        <div class="label">在线客户端</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-enabled">0</div>
+        <div class="label">已启用客户端</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-requests">0</div>
+        <div class="label">请求记录数</div>
+      </div>
+    </div>
+
+    <!-- 客户端面板 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🖥️ 客户端</h2>
+        <button class="btn btn-secondary" onclick="refreshData()">🔄 刷新</button>
+      </div>
+      <div class="client-list" id="client-list">
+        <div class="empty">暂无客户端</div>
+      </div>
+    </div>
+
+    <!-- 请求记录面板 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>📋 网络请求记录</h2>
+        <div>
+          <button class="btn btn-secondary" onclick="refreshRequests()">🔄 刷新</button>
+        </div>
+      </div>
+      <div id="requests-container">
+        <div class="empty">暂无请求记录</div>
+      </div>
+    </div>
+
+    <!-- 发送消息面板 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>📨 发送消息</h2>
+      </div>
+      <div class="send-form">
+        <select id="target-client">
+          <option value="">选择客户端</option>
+        </select>
+        <input type="text" id="message-content" placeholder="输入消息内容" />
+        <button class="btn btn-success" onclick="sendMessage()">发送</button>
+      </div>
+    </div>
+
+    <div class="refresh-info" id="refresh-info"></div>
+  </div>
+
+  <script>
+    const PLUGIN_NAME = 'example';
+
+    async function refreshData() {
+      try {
+        const res = await fetch(`/admin/plugin/${PLUGIN_NAME}/data`);
+        const data = await res.json();
+
+        // 更新头部
+        document.getElementById('plugin-name').textContent = data.name + ' Plugin';
+        document.getElementById('plugin-version').textContent = 'v' + data.version;
+
+        // 更新统计
+        document.getElementById('stat-online').textContent = data.onlineClients?.length || 0;
+        document.getElementById('stat-enabled').textContent = data.enabledClients?.length || 0;
+
+        // 更新客户端列表
+        const clientList = document.getElementById('client-list');
+        if (data.onlineClients?.length > 0) {
+          clientList.innerHTML = data.onlineClients.map(c => `
+            <div class="client-item">
+              <span>
+                <span class="client-name">${c.name}</span>
+                <span class="client-id">${c.clientId.slice(0, 8)}...</span>
+              </span>
+              <span class="status-badge online">在线</span>
+            </div>
+          `).join('');
+
+          // 更新发送消息下拉
+          const select = document.getElementById('target-client');
+          select.innerHTML = '<option value="">选择客户端</option>' +
+            data.onlineClients.map(c => `<option value="${c.clientId}">${c.name} (${c.clientId.slice(0, 8)})</option>`).join('');
+        } else {
+          clientList.innerHTML = '<div class="empty">暂无在线客户端</div>';
+        }
+
+        updateRefreshTime();
+      } catch (err) {
+        console.error('刷新数据失败:', err);
+      }
+    }
+
+    async function refreshRequests() {
+      try {
+        // 通过 API 获取请求数量
+        const res = await fetch(`/api/plugins/${PLUGIN_NAME}/requests/count`);
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('stat-requests').textContent = data.count || 0;
+
+          const container = document.getElementById('requests-container');
+          if (data.requests?.length > 0) {
+            container.innerHTML = `
+              <table class="request-table">
+                <thead>
+                  <tr>
+                    <th>方法</th>
+                    <th>URL</th>
+                    <th>状态</th>
+                    <th>耗时</th>
+                    <th>时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${data.requests.slice(-50).reverse().map(r => `
+                    <tr>
+                      <td><span class="method-badge method-${r.method}">${r.method}</span></td>
+                      <td class="url-cell" title="${r.url}">${r.url}</td>
+                      <td class="status-cell status-${Math.floor(r.status / 100)}xx">${r.status}</td>
+                      <td>${r.duration || 0}ms</td>
+                      <td>${r.time ? new Date(r.time).toLocaleTimeString() : '-'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `;
+          } else {
+            container.innerHTML = '<div class="empty">暂无请求记录</div>';
+          }
+        } else {
+          // API 不存在时，显示提示
+          document.getElementById('requests-container').innerHTML =
+            '<div class="empty">请求记录需要通过插件 API 查询</div>';
+        }
+        updateRefreshTime();
+      } catch (err) {
+        console.error('刷新请求记录失败:', err);
+      }
+    }
+
+    async function sendMessage() {
+      const clientId = document.getElementById('target-client').value;
+      const message = document.getElementById('message-content').value;
+
+      if (!clientId) {
+        alert('请选择目标客户端');
+        return;
+      }
+      if (!message) {
+        alert('请输入消息内容');
+        return;
+      }
+
+      try {
+        await fetch(`/api/plugins/${PLUGIN_NAME}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId, message: { type: 'custom', content: message } })
+        });
+        document.getElementById('message-content').value = '';
+        alert('消息已发送');
+      } catch (err) {
+        alert('发送失败: ' + err.message);
+      }
+    }
+
+    function updateRefreshTime() {
+      document.getElementById('refresh-info').textContent =
+        '最后更新: ' + new Date().toLocaleTimeString();
+    }
+
+    // 初始加载
+    refreshData();
+
+    // 自动刷新
+    setInterval(refreshData, 10000);
+  </script>
+</body>
+</html>

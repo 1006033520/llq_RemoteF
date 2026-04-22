@@ -1,10 +1,11 @@
 {
   "name": "example",
-  "version": "1.0.0",
-  "description": "示例插件 - 演示 RemoteF 插件开发",
+  "version": "1.8.0",
+  "description": "网络请求监控插件",
   "author": "RemoteF",
   "server": {
-    "entry": "server.js"
+    "entry": "server.js",
+    "page": "page.html"
   },
   "client": {
     "directory": "client",

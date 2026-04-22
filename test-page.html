@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>RemoteF 测试页面</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui; background: #1a1a2e; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+    h1 { margin-bottom: 0.5rem; }
+    .subtitle { color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .card { background: #16213e; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+    h2 { margin-bottom: 1rem; font-size: 1.1rem; color: #818cf8; }
+    .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+    .btn-get { background: #166534; color: #86efac; }
+    .btn-post { background: #1e40af; color: #93c5fd; }
+    .btn-put { background: #854d0e; color: #fde047; }
+    .btn-delete { background: #991b1b; color: #fca5a5; }
+    .btn-xhr { background: #6b21a8; color: #d8b4fe; }
+    .btn-slow { background: #164e63; color: #67e8f9; }
+    .btn-error { background: #7f1d1d; color: #fca5a5; }
+    .btn-large { background: #3b0764; color: #d8b4fe; }
+    .btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .log { background: #0f0f23; border-radius: 8px; padding: 1rem; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; line-height: 1.6; }
+    .log-get { color: #86efac; }
+    .log-post { color: #93c5fd; }
+    .log-err { color: #fca5a5; }
+    .status { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.8rem; margin-bottom: 1rem; }
+    .status-ok { background: #166534; color: #86efac; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>🧪 RemoteF 网络监控测试</h1>
+  <div class="subtitle">本地测试服务器 · 所有请求发往 localhost:8080</div>
+  <div class="status status-ok" id="status">就绪</div>
+
+  <div class="grid-2">
+    <div>
+      <div class="card">
+        <h2>Fetch 请求测试</h2>
+        <div class="btn-row">
+          <button class="btn btn-get" onclick="fetchGet()">GET</button>
+          <button class="btn btn-post" onclick="fetchPost()">POST</button>
+          <button class="btn btn-put" onclick="fetchPut()">PUT</button>
+          <button class="btn btn-delete" onclick="fetchDelete()">DELETE</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>XHR 请求测试</h2>
+        <div class="btn-row">
+          <button class="btn btn-xhr" onclick="xhrGet()">XHR GET</button>
+          <button class="btn btn-xhr" onclick="xhrPost()">XHR POST</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>特殊测试</h2>
+        <div class="btn-row">
+          <button class="btn btn-slow" onclick="fetchSlow()">慢速请求</button>
+          <button class="btn btn-error" onclick="fetchError()">错误请求</button>
+          <button class="btn btn-large" onclick="fetchLarge()">大数据</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>批量测试</h2>
+        <div class="btn-row">
+          <button class="btn btn-get" onclick="batchRequests(5)">5次</button>
+          <button class="btn btn-get" onclick="batchRequests(20)">20次</button>
+          <button class="btn btn-get" onclick="batchRequests(50)">50次</button>
+          <button class="btn btn-post" onclick="mixedBatch(10)">混合10次</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>请求日志</h2>
+        <div class="log" id="log">等待请求...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    const log = document.getElementById('log');
+    let logCount = 0;
+
+    function addLog(method, url, status, type = 'fetch') {
+      logCount++;
+      const cls = method === 'GET' ? 'log-get' : method === 'POST' ? 'log-post' : 'log-err';
+      const time = new Date().toLocaleTimeString();
+      log.innerHTML = `<div class="${cls}">[${time}] #${logCount} ${type} ${method} ${url} → ${status}</div>` + log.innerHTML;
+    }
+
+    // Fetch 测试
+    async function fetchGet() {
+      try {
+        const r = await fetch(`${API}/api/get?t=${Date.now()}`);
+        addLog('GET', '/api/get', r.status);
+      } catch (e) { addLog('GET', 'ERROR', e.message); }
+    }
+
+    async function fetchPost() {
+      try {
+        const r = await fetch(`${API}/api/post`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ test: true, time: Date.now() }) });
+        addLog('POST', '/api/post', r.status);
+      } catch (e) { addLog('POST', 'ERROR', e.message); }
+    }
+
+    async function fetchPut() {
+      try {
+        const r = await fetch(`${API}/api/put`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ update: true }) });
+        addLog('PUT', '/api/put', r.status);
+      } catch (e) { addLog('PUT', 'ERROR', e.message); }
+    }
+
+    async function fetchDelete() {
+      try {
+        const r = await fetch(`${API}/api/delete`, { method: 'DELETE' });
+        addLog('DELETE', '/api/delete', r.status);
+      } catch (e) { addLog('DELETE', 'ERROR', e.message); }
+    }
+
+    // 特殊测试
+    async function fetchSlow() {
+      try {
+        const r = await fetch(`${API}/api/slow?ms=1500`);
+        addLog('GET', '/api/slow', r.status);
+      } catch (e) { addLog('GET', 'ERROR', e.message); }
+    }
+
+    async function fetchError() {
+      try {
+        const r = await fetch(`${API}/api/error?code=500`);
+        addLog('GET', '/api/error', r.status);
+      } catch (e) { addLog('GET', 'ERROR', e.message); }
+    }
+
+    async function fetchLarge() {
+      try {
+        const r = await fetch(`${API}/api/large?count=200`);
+        addLog('GET', '/api/large', r.status);
+      } catch (e) { addLog('GET', 'ERROR', e.message); }
+    }
+
+    // XHR 测试
+    function xhrGet() {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', `${API}/api/get?xhr=1&t=${Date.now()}`);
+      xhr.onload = () => addLog('GET', '/api/get?xhr=1', xhr.status, 'xhr');
+      xhr.onerror = () => addLog('GET', 'ERROR', 'network error', 'xhr');
+      xhr.send();
+    }
+
+    function xhrPost() {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API}/api/post`);
+      xhr.onload = () => addLog('POST', '/api/post', xhr.status, 'xhr');
+      xhr.onerror = () => addLog('POST', 'ERROR', 'network error', 'xhr');
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(JSON.stringify({ xhr: true }));
+    }
+
+    // 批量测试
+    async function batchRequests(n) {
+      document.getElementById('status').textContent = `正在发送 ${n} 个请求...`;
+      for (let i = 0; i < n; i++) {
+        await fetchGet();
+        await new Promise(r => setTimeout(r, 100));
+      }
+      document.getElementById('status').textContent = `完成 ${n} 个请求`;
+    }
+
+    // 混合批量
+    async function mixedBatch(n) {
+      document.getElementById('status').textContent = `正在发送 ${n} 个混合请求...`;
+      const fns = [fetchGet, fetchPost, fetchPut, fetchDelete, xhrGet, xhrPost];
+      for (let i = 0; i < n; i++) {
+        await fns[i % fns.length]();
+        await new Promise(r => setTimeout(r, 100));
+      }
+      document.getElementById('status').textContent = `完成 ${n} 个混合请求`;
+    }
+
+    console.log('[Test Page] RemoteF 测试页面已加载');
+  </script>
+</body>
+</html>

@@ -1,267 +1,328 @@
 /**
  * RemoteF 插件运行时
- * 在页面上下文中运行插件代码
+ * 
+ * 架构设计：
+ * 1. 插件代码在 MAIN 世界执行（绕过 CSP）
+ * 2. 通过 window.postMessage 桥接 MAIN ↔ ISOLATED 通信
+ * 3. Content script (ISOLATED) 中转消息到 background → 服务端
  */
 
 // 创建插件运行时管理器
 const RemoteFRuntime = {
   plugins: new Map(),
-  messageHandlers: new Set(),
+  currentUrl: '',
 
   /**
-   * 注册插件
+   * 检查 URL 是否匹配给定的 match patterns
+   * 支持标准 Chrome match patterns 格式：
+   *   - <all_urls>         → 匹配所有
+   *   - *://*.example.com/* → 通配符域名
+   *   - https://example.com/* → 精确域名
+   * @param {string} url - 待检测的 URL
+   * @param {string[]|null} patterns - match patterns 数组，null 或空数组表示匹配所有
+   * @returns {boolean}
    */
-  registerPlugin(pluginName, module) {
-    if (this.plugins.has(pluginName)) {
-      console.log(`[RemoteF Runtime] 插件 ${pluginName} 已存在，跳过注册`);
+  matchUrl(url, patterns) {
+    // 未配置 matches 或空数组 → 所有网站生效
+    if (!patterns || !Array.isArray(patterns) || patterns.length === 0) {
+      return true;
+    }
+
+    for (const pattern of patterns) {
+      if (pattern === '<all_urls>') return true;
+      if (this._matchPattern(url, pattern)) return true;
+    }
+    return false;
+  },
+
+  /**
+   * 单个 match pattern 匹配
+   * 格式: <scheme>://<host>/<path>
+   * scheme: * | http | https
+   * host: * | *.domain | domain
+   * path: /path/* | /path
+   */
+  _matchPattern(url, pattern) {
+    try {
+      const parsed = new URL(url);
+      // 解析 pattern: scheme://host/path
+      const match = pattern.match(/^(\*|https?):\/\/(.*?)\/(.*)$/);
+      if (!match) return false;
+
+      const [, scheme, host, path] = match;
+
+      // scheme 匹配
+      if (scheme !== '*' && parsed.protocol.replace(':', '') !== scheme) return false;
+
+      // host 匹配（需处理端口）
+      if (host !== '*') {
+        // 分离 pattern 中的 host 和 port
+        const [patternHost, patternPort] = host.split(':');
+
+        // 端口匹配
+        if (patternPort) {
+          const urlPort = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+          if (urlPort !== patternPort) return false;
+        }
+
+        // 主机名匹配
+        if (patternHost.startsWith('*.')) {
+          // *.example.com → 匹配 example.com 及其所有子域
+          const domain = patternHost.slice(2);
+          if (parsed.hostname !== domain && !parsed.hostname.endsWith('.' + domain)) return false;
+        } else {
+          if (parsed.hostname !== patternHost) return false;
+        }
+      }
+
+      // path 匹配（支持末尾 * 通配）
+      const urlPath = parsed.pathname + parsed.search;
+      const pathRegex = new RegExp('^' + path.replace(/\*/g, '.*') + '$');
+      if (!pathRegex.test(urlPath)) return false;
+
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * 初始化
+   */
+  async init() {
+    console.log('[RemoteF Runtime] 初始化...');
+
+    this.currentUrl = window.location.href;
+    this.watchNavigation();
+    this.setupMessageBridge();
+
+    // 向 background 请求插件列表并执行
+    await this.loadPlugins();
+
+    console.log('[RemoteF Runtime] 初始化完成');
+  },
+
+  /**
+   * 设置 MAIN ↔ ISOLATED 消息桥接
+   * MAIN 世界的插件通过 window.postMessage 发消息
+   * ISOLATED 的 content script 监听并转发到 background
+   */
+  setupMessageBridge() {
+    window.addEventListener('message', (event) => {
+      // 只处理来自本窗口的 RemoteF 消息
+      if (event.source !== window) return;
+      if (event.data?.source !== 'remotef-main') return;
+
+      const { type, payload } = event.data;
+      
+      switch (type) {
+        case 'plugin_message':
+          // 插件发消息给同名服务端，通过 background → WebSocket
+          chrome.runtime.sendMessage({
+            target: 'background',
+            type: 'plugin_to_server',
+            payload
+          });
+          break;
+
+        case 'api_request':
+          // 插件 API 请求，通过 background 处理后返回结果
+          chrome.runtime.sendMessage({
+            target: 'background',
+            type: 'api_request',
+            payload
+          }, (result) => {
+            if (chrome.runtime.lastError) {
+              console.error('[RemoteF Runtime] API 请求错误:', chrome.runtime.lastError.message);
+              return;
+            }
+            // 将结果通过 postMessage 返回给 MAIN 世界
+            window.postMessage({
+              source: 'remotef-isolated',
+              type: 'api_response',
+              payload: { method: payload.method, result }
+            }, '*');
+          });
+          break;
+
+        case 'input_dispatch':
+          // 系统级输入事件，通过 CDP 发送（isTrusted: true）
+          chrome.runtime.sendMessage({
+            target: 'background',
+            type: 'input_dispatch',
+            payload
+          }, (result) => {
+            if (chrome.runtime.lastError) {
+              console.error('[RemoteF Runtime] 输入事件错误:', chrome.runtime.lastError.message);
+              // 返回错误给 MAIN 世界
+              window.postMessage({
+                source: 'remotef-isolated',
+                type: 'input_dispatch_response',
+                payload: { requestId: payload.requestId, result: { success: false, error: chrome.runtime.lastError.message } }
+              }, '*');
+              return;
+            }
+            // 返回结果给 MAIN 世界
+            window.postMessage({
+              source: 'remotef-isolated',
+              type: 'input_dispatch_response',
+              payload: { requestId: payload.requestId, result }
+            }, '*');
+          });
+          break;
+
+        case 'plugin_log':
+          // 插件日志（从 MAIN 世界转发到控制台）
+          console[payload.level || 'log'](`[${payload.pluginName}]`, ...payload.args);
+          break;
+
+        case 'plugin_ready':
+          // 插件初始化完成通知
+          console.log(`[RemoteF Runtime] 插件 ${payload.pluginName} 已就绪`);
+          this.plugins.set(payload.pluginName, { ready: true });
+          break;
+      }
+    });
+  },
+
+  /**
+   * 从 background 获取插件列表并执行
+   * 根据 manifest.matches 配置过滤：只在匹配的网站上运行
+   */
+  async loadPlugins() {
+    console.log('[RemoteF Runtime] 加载插件...');
+
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ target: 'background', type: 'get_plugins_with_code' }, async (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('[RemoteF Runtime] 获取插件失败:', chrome.runtime.lastError.message);
+          resolve();
+          return;
+        }
+
+        const plugins = response?.plugins || [];
+        const currentUrl = window.location.href;
+        console.log(`[RemoteF Runtime] 获取到插件: ${plugins.length}, 当前URL: ${currentUrl}`);
+
+        for (const plugin of plugins) {
+          // 检查当前 URL 是否匹配插件的 matches 配置
+          if (!this.matchUrl(currentUrl, plugin.matches)) {
+            console.log(`[RemoteF Runtime] ${plugin.name}: URL 不匹配，跳过 (matches: ${JSON.stringify(plugin.matches)})`);
+            continue;
+          }
+          await this.loadAndRunPlugin(plugin.name, plugin.code);
+        }
+
+        resolve();
+      });
+    });
+  },
+
+  /**
+   * 加载并运行单个插件
+   */
+  async loadAndRunPlugin(pluginName, pluginCode) {
+    if (!pluginCode) {
+      console.log(`[RemoteF Runtime] ${pluginName}: 无代码，跳过`);
       return;
     }
 
-    console.log(`[RemoteF Runtime] 注册插件: ${pluginName}`);
+    console.log(`[RemoteF Runtime] 加载插件: ${pluginName}`);
 
     try {
-      // 创建沙箱上下文
-      const context = this.createContext(pluginName);
-
-      // 执行插件代码
-      if (typeof module === 'function') {
-        module(context);
-      } else if (typeof module === 'object' && module) {
-        // 如果是对象，直接作为插件实例
-        this.plugins.set(pluginName, {
-          manifest: module.manifest,
-          instance: module,
-          context
-        });
-
-        // 调用初始化
-        if (module.init) {
-          module.init(context);
-        }
-      }
-
-      console.log(`[RemoteF Runtime] 插件 ${pluginName} 注册成功`);
-    } catch (err) {
-      console.error(`[RemoteF Runtime] 插件 ${pluginName} 注册失败:`, err);
-    }
-  },
-
-  /**
-   * 卸载插件
-   */
-  unregisterPlugin(pluginName) {
-    const plugin = this.plugins.get(pluginName);
-    if (!plugin) return;
-
-    try {
-      if (plugin.instance && plugin.instance.destroy) {
-        plugin.instance.destroy();
-      }
-    } catch (err) {
-      console.error(`[RemoteF Runtime] 插件 ${pluginName} 销毁失败:`, err);
-    }
-
-    this.plugins.delete(pluginName);
-    console.log(`[RemoteF Runtime] 插件 ${pluginName} 已卸载`);
-  },
-
-  /**
-   * 运行插件
-   */
-  async runPlugin(pluginName, config = {}) {
-    const plugin = this.plugins.get(pluginName);
-    if (!plugin) {
-      console.error(`[RemoteF Runtime] 插件 ${pluginName} 未注册`);
-      return { success: false, error: 'Plugin not found' };
-    }
-
-    try {
-      if (plugin.instance && plugin.instance.run) {
-        const result = await plugin.instance.run(plugin.context, config);
-        return { success: true, result };
-      }
-      return { success: false, error: 'No run function' };
-    } catch (err) {
-      console.error(`[RemoteF Runtime] 插件 ${pluginName} 运行失败:`, err);
-      return { success: false, error: err.message };
-    }
-  },
-
-  /**
-   * 创建沙箱上下文
-   */
-  createContext(pluginName) {
-    const self = this;
-
-    return {
-      pluginName,
-
-      // DOM 操作
-      document: window.document,
-      window: window,
-
-      // 日志
-      console: {
-        log: (...args) => console.log(`[${pluginName}]`, ...args),
-        error: (...args) => console.error(`[${pluginName}]`, ...args),
-        warn: (...args) => console.warn(`[${pluginName}]`, ...args),
-        info: (...args) => console.info(`[${pluginName}]`, ...args)
-      },
-
-      // 消息系统
-      onMessage(callback) {
-        self.messageHandlers.add({ pluginName, callback });
-      },
-      sendMessage(message) {
-        // 发送到 background script
+      // 通过 background 在 MAIN 世界执行插件代码
+      const tabId = await this.getCurrentTabId();
+      
+      const response = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
-          type: 'plugin_to_server',
-          payload: {
-            pluginName,
-            message
+          target: 'background',
+          type: 'execute_plugin',
+          payload: { pluginName, pluginCode, tabId }
+        }, (res) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(res);
           }
         });
-      },
+      });
 
-      // 存储
-      storage: {
-        async get(key) {
-          const result = await chrome.storage.local.get(`plugin_${pluginName}_${key}`);
-          return result[`plugin_${pluginName}_${key}`];
-        },
-        async set(key, value) {
-          await chrome.storage.local.set({
-            [`plugin_${pluginName}_${key}`]: value
-          });
-        },
-        async remove(key) {
-          await chrome.storage.local.remove(`plugin_${pluginName}_${key}`);
-        }
-      },
-
-      // 工具函数
-      utils: {
-        // 等待元素出现
-        waitForSelector(selector, timeout = 5000) {
-          return new Promise((resolve, reject) => {
-            const el = document.querySelector(selector);
-            if (el) return resolve(el);
-
-            const observer = new MutationObserver(() => {
-              const el = document.querySelector(selector);
-              if (el) {
-                observer.disconnect();
-                resolve(el);
-              }
-            });
-
-            observer.observe(document.body, {
-              childList: true,
-              subtree: true
-            });
-
-            setTimeout(() => {
-              observer.disconnect();
-              reject(new Error(`Element ${selector} not found within ${timeout}ms`));
-            }, timeout);
-          });
-        },
-
-        // 监听 fetch 请求
-        watchFetch(callback) {
-          const originalFetch = window.fetch;
-          window.__remotef_fetch = window.__remotef_fetch || originalFetch;
-          window.fetch = async (...args) => {
-            const response = await window.__remotef_fetch(...args);
-            callback({
-              url: args[0],
-              method: (args[1]?.method || 'GET').toUpperCase(),
-              options: args[1],
-              response: response.clone()
-            });
-            return response;
-          };
-          return () => {
-            window.fetch = window.__remotef_fetch;
-          };
-        },
-
-        // 监听 XHR 请求
-        watchXHR(callback) {
-          const originalOpen = XMLHttpRequest.prototype.open;
-          const originalSend = XMLHttpRequest.prototype.send;
-          XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-            this.__remotef_info = { method, url };
-            return originalOpen.call(this, method, url, ...rest);
-          };
-          XMLHttpRequest.prototype.send = function (...args) {
-            this.addEventListener('load', () => {
-              callback(this.__remotef_info);
-            });
-            return originalSend.apply(this, args);
-          };
-          return () => {
-            XMLHttpRequest.prototype.open = originalOpen;
-            XMLHttpRequest.prototype.send = originalSend;
-          };
-        },
-
-        // 注入脚本到页面
-        injectScript(code) {
-          const script = document.createElement('script');
-          script.textContent = code;
-          script.id = `remotef-${pluginName}-injected`;
-          (document.head || document.documentElement).appendChild(script);
-          return script;
-        },
-
-        // 注入样式到页面
-        injectStyle(css) {
-          const style = document.createElement('style');
-          style.textContent = css;
-          style.id = `remotef-${pluginName}-style`;
-          (document.head || document.documentElement).appendChild(style);
-          return style;
-        }
-      },
-
-      // 配置
-      config: {},
-      setConfig(config) {
-        this.config = { ...this.config, ...config };
-      },
-
-      // 获取当前标签页信息
-      async getCurrentTab() {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        return tab;
+      if (response?.success) {
+        console.log(`[RemoteF Runtime] ${pluginName}: 执行成功`);
+      } else {
+        throw new Error(response?.error || 'Unknown error');
       }
-    };
+    } catch (err) {
+      console.error(`[RemoteF Runtime] ${pluginName}: 加载失败:`, err.message);
+    }
   },
 
   /**
-   * 处理来自 background 的消息
+   * 获取当前标签页 ID（通过 background 获取）
    */
-  handleMessage(message) {
+  async getCurrentTabId() {
+    if (this._cachedTabId) return this._cachedTabId;
+    
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ target: 'background', type: 'get_current_tab_id' }, (response) => {
+        this._cachedTabId = response?.tabId;
+        resolve(this._cachedTabId);
+      });
+    });
+  },
+
+  /**
+   * 监听 SPA 页面导航
+   */
+  watchNavigation() {
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    const self = this;
+
+    history.pushState = function (...args) {
+      originalPushState.apply(this, args);
+      self.onNavigation();
+    };
+
+    history.replaceState = function (...args) {
+      originalReplaceState.apply(this, args);
+      self.onNavigation();
+    };
+
+    window.addEventListener('popstate', () => this.onNavigation());
+    window.addEventListener('hashchange', () => this.onNavigation());
+  },
+
+  onNavigation() {
+    const newUrl = window.location.href;
+    if (newUrl === this.currentUrl) return;
+
+    console.log(`[RemoteF Runtime] 页面导航: ${this.currentUrl} -> ${newUrl}`);
+    this.currentUrl = newUrl;
+    this.loadPlugins();
+  },
+
+  /**
+   * 处理来自 background 的消息（服务端 → 客户端）
+   */
+  async handleMessage(message) {
     const { type, payload } = message;
 
     switch (type) {
-      case 'plugin_run':
-        this.runPlugin(payload.pluginName, payload.config);
-        break;
-
       case 'plugin_message':
-        // 分发给对应插件
-        for (const handler of this.messageHandlers) {
-          if (handler.pluginName === payload.pluginName) {
-            handler.callback(payload.message);
-          }
-        }
+        // 服务端消息转发给 MAIN 世界的同名插件
+        window.postMessage({
+          source: 'remotef-isolated',
+          type: 'server_message',
+          payload
+        }, '*');
         break;
 
-      case 'plugin_unload':
-        this.unregisterPlugin(payload.pluginName);
+      case 'plugin_rerun': {
+        const code = await this.getPluginCode(payload.pluginName);
+        this.loadAndRunPlugin(payload.pluginName, code);
         break;
+      }
     }
   }
 };
@@ -269,55 +330,18 @@ const RemoteFRuntime = {
 // 监听来自 background script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'content') return;
-
-  const { type, payload } = message;
-
-  // plugin_execute: 来自 background 的插件执行请求
-  if (type === 'plugin_execute') {
-    const { pluginName, code, config } = payload;
-    console.log(`[RemoteF Runtime] 执行插件: ${pluginName}`);
-
-    try {
-      // 执行插件代码，获取插件实例
-      // eslint-disable-next-line no-eval
-      const pluginInstance = eval(code);
-
-      if (!pluginInstance) {
-        sendResponse({ success: false, error: '插件代码未返回有效实例' });
-        return;
-      }
-
-      // 创建运行时上下文
-      const context = RemoteFRuntime.createContext(pluginName);
-
-      // 调用 init（如果存在）
-      if (pluginInstance.init) {
-        try {
-          pluginInstance.init(context);
-        } catch (initErr) {
-          console.warn(`[${pluginName}] init 警告:`, initErr.message);
-        }
-      }
-
-      // 调用 run
-      if (pluginInstance.run) {
-        const result = pluginInstance.run(context, config || {});
-        sendResponse({ success: true, result });
-      } else {
-        sendResponse({ success: true, result: '插件已初始化（无 run 方法）' });
-      }
-    } catch (err) {
-      console.error(`[RemoteF Runtime] 插件 ${pluginName} 执行失败:`, err);
-      sendResponse({ success: false, error: err.message });
-    }
-    return; // 异步响应
-  }
-
   RemoteFRuntime.handleMessage(message);
   sendResponse({ success: true });
 });
 
 // 导出到全局
 window.RemoteFRuntime = RemoteFRuntime;
+
+// 页面加载完成后自动初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => RemoteFRuntime.init());
+} else {
+  RemoteFRuntime.init();
+}
 
 console.log('[RemoteF] 插件运行时已初始化');

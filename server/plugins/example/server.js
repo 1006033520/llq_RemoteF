@@ -1,44 +1,72 @@
 /**
  * 示例插件 - 服务端模块
- *
- * 这个模块运行在服务端，可以：
- * - 管理客户端连接
- * - 处理来自客户端的消息
- * - 提供 HTTP API
+ * 
+ * 功能：
+ * 1. 接收客户端发来的网络请求记录
+ * 2. 保存到 /客户端名称/日期/网页标题/时间_接口名称.json
  */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default {
   manifest: {
     name: 'example',
-    version: '1.0.0',
-    description: '示例插件'
+    version: '1.8.0',
+    description: '网络请求监控插件'
   },
 
-  // 连接统计
-  stats: {
-    connectCount: 0,
-    messages: []
-  },
+  // 数据保存根目录
+  dataDir: path.join(__dirname, '..', '..', 'data'),
+
+  // 客户端信息缓存
+  clientInfo: new Map(),
+
+  // 最近的请求记录（内存缓存，用于入口页展示）
+  recentRequests: [],
+  maxRecentRequests: 200,
 
   /**
-   * 插件安装时调用
+   * 注册入口页 API 路由
+   * 在服务端启动后由 PluginManager 调用
    */
-  async onInstall(ctx) {
-    console.log('[Example Plugin] 已安装');
+  setupRoutes(app, pluginManager) {
+    // 获取请求记录
+    app.get(`/api/plugins/${this.manifest.name}/requests/count`, (req, res) => {
+      res.json({
+        count: this.recentRequests.length,
+        requests: this.recentRequests.slice(-50)
+      });
+    });
+
+    // 发送消息给客户端
+    app.post(`/api/plugins/${this.manifest.name}/send`, (req, res) => {
+      const { clientId, message } = req.body;
+      if (!clientId || !message) {
+        return res.status(400).json({ error: 'Missing clientId or message' });
+      }
+
+      // 通过 pluginManager 的 serverApi 发送
+      pluginManager.serverApi.sendToClient(clientId, this.manifest.name, message);
+      res.json({ success: true });
+    });
+
+    console.log(`[Example Plugin] 入口页 API 路由已注册`);
   },
 
   /**
-   * 插件启动时调用
+   * 插件启动
    */
   async onStart(ctx) {
-    console.log('[Example Plugin] 已启动');
-  },
-
-  /**
-   * 插件停止时调用
-   */
-  async onStop(ctx) {
-    console.log('[Example Plugin] 已停止');
+    // 确保 data 目录存在
+    if (!fs.existsSync(this.dataDir)) {
+      fs.mkdirSync(this.dataDir, { recursive: true });
+    }
+    console.log('[Example Plugin] 已启动，数据目录:', this.dataDir);
   },
 
   /**
@@ -46,79 +74,157 @@ export default {
    */
   async onClientEvent(ctx, event, clientId) {
     if (event === 'connect') {
-      this.stats.connectCount++;
-      console.log(`[Example Plugin] 客户端 ${clientId} 连接，当前: ${this.stats.connectCount}`);
-
-      // 向该客户端发送欢迎消息
-      ctx.server.send(clientId, 'welcome', {
-        message: '欢迎使用 Example 插件！',
-        stats: this.stats
-      });
+      console.log(`[Example Plugin] 客户端 ${clientId} 连接`);
     } else if (event === 'disconnect') {
       console.log(`[Example Plugin] 客户端 ${clientId} 断开`);
     }
   },
 
   /**
-   * 客户端启用此插件
+   * 客户端启用插件
    */
   async onEnable(ctx) {
     console.log(`[Example Plugin] 客户端 ${ctx.clientId} 启用插件`);
-  },
+    this.clientInfo.set(ctx.clientId, { connectedAt: Date.now() });
 
-  /**
-   * 客户端禁用此插件
-   */
-  async onDisable(ctx) {
-    console.log(`[Example Plugin] 客户端 ${ctx.clientId} 禁用插件`);
+    // 使用 ctx.api 获取连接状态
+    const status = ctx.api.getConnectionStatus();
+    console.log(`[Example Plugin] 服务端状态: 在线客户端 ${status.onlineClients}, 插件数 ${status.totalPlugins}`);
   },
 
   /**
    * 处理来自客户端的消息
    */
   async onMessage(ctx, message) {
-    const { type, payload } = message;
+    // 消息格式: { pluginName: 'example', message: { type: '...', ... } }
+    const msg = message?.message || message;
+    
+    if (!msg) return;
 
-    this.stats.messages.push({
-      type,
-      payload,
-      from: ctx.clientId,
-      time: Date.now()
-    });
-
-    console.log(`[Example Plugin] 收到消息 from ${ctx.clientId}:`, type, payload);
-
-    // 处理 ping
-    if (type === 'ping') {
-      ctx.server.send(ctx.clientId, 'pong', {
-        timestamp: Date.now()
+    // 客户端就绪通知
+    if (msg.type === 'client_ready') {
+      this.clientInfo.set(ctx.clientId, {
+        ...this.clientInfo.get(ctx.clientId),
+        url: msg.url
       });
+      console.log(`[Example Plugin] 客户端 ${ctx.clientId} 就绪, URL: ${msg.url}`);
+      return;
     }
 
-    // 处理获取统计数据
-    if (type === 'get_stats') {
-      ctx.server.send(ctx.clientId, 'stats', this.stats);
+    // 网络请求记录
+    if (msg.type === 'network_request') {
+      await this.saveRequest(ctx.clientId, msg);
+      // 使用 ctx.api 发送保存确认给客户端同名插件
+      ctx.api.sendToClient(ctx.clientId, {
+        type: 'request_saved',
+        url: msg.url,
+        method: msg.method,
+        timestamp: msg.timestamp
+      });
+      return;
     }
+
+    console.log(`[Example Plugin] 未处理消息:`, msg.type);
   },
 
   /**
-   * HTTP 路由
+   * 保存网络请求记录到文件
+   * 路径格式：/客户端名称/日期/网页标题/时间_接口名称.json
    */
-  routes: {
-    'GET /api/example/stats': async (ctx, req) => {
-      return {
-        success: true,
-        data: this.stats
-      };
-    },
+  async saveRequest(clientId, requestInfo) {
+    try {
+      const { url, method, status, statusText, duration, requestType, timestamp, request, response } = requestInfo;
 
-    'POST /api/example/broadcast': async (ctx, req) => {
-      const { message } = req.body || {};
-      ctx.server.broadcast('example_message', {
-        from: 'server',
-        message
-      });
-      return { success: true };
+      // 解析 URL 获取接口名称
+      let apiName = 'unknown';
+      try {
+        const urlObj = new URL(url);
+        // 取 path 部分作为接口名，将 / 转换为 _
+        apiName = urlObj.pathname
+          .replace(/^\//, '')
+          .replace(/\/$/g, '')
+          .replace(/\//g, '_') || 'root';
+        // 截断过长的名称
+        if (apiName.length > 80) {
+          apiName = apiName.substring(0, 80);
+        }
+      } catch {
+        apiName = 'invalid_url';
+      }
+
+      // 客户端名称（使用 clientId 前8位）
+      const clientName = clientId.substring(0, 8);
+
+      // 日期目录
+      const now = new Date(timestamp || Date.now());
+      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // 时间戳文件名
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, ''); // HHmmss
+
+      // 网页标题（从客户端信息获取，或用域名代替）
+      const clientData = this.clientInfo.get(clientId);
+      let pageTitle = 'unknown_page';
+      try {
+        if (clientData?.url) {
+          const urlObj = new URL(clientData.url);
+          pageTitle = urlObj.hostname.replace(/\./g, '_');
+        }
+      } catch { /* ignore */ }
+
+      // 构建保存路径
+      const saveDir = path.join(
+        this.dataDir,
+        clientName,
+        dateStr,
+        pageTitle
+      );
+
+      // 确保目录存在
+      if (!fs.existsSync(saveDir)) {
+        fs.mkdirSync(saveDir, { recursive: true });
+      }
+
+      // 文件名：时间_方法_接口名称.json
+      const fileName = `${timeStr}_${method}_${apiName}.json`;
+      const filePath = path.join(saveDir, fileName);
+
+      // 保存完整数据（请求 + 响应）
+      const data = {
+        url,
+        method,
+        status,
+        statusText: statusText || '',
+        duration: duration || 0,
+        requestType,
+        timestamp: timestamp || Date.now(),
+        time: now.toISOString(),
+        clientId,
+        request: request || null,
+        response: response || null
+      };
+
+      // 如果文件已存在（同一秒同一接口），追加序号
+      let finalPath = filePath;
+      let counter = 1;
+      while (fs.existsSync(finalPath)) {
+        const ext = path.extname(filePath);
+        const base = path.basename(filePath, ext);
+        finalPath = path.join(saveDir, `${base}_${counter}${ext}`);
+        counter++;
+      }
+
+      fs.writeFileSync(finalPath, JSON.stringify(data, null, 2), 'utf-8');
+      console.log(`[Example Plugin] 保存请求: ${path.relative(this.dataDir, finalPath)}`);
+
+      // 加入内存缓存
+      this.recentRequests.push(data);
+      if (this.recentRequests.length > this.maxRecentRequests) {
+        this.recentRequests = this.recentRequests.slice(-this.maxRecentRequests);
+      }
+
+    } catch (err) {
+      console.error('[Example Plugin] 保存请求失败:', err.message);
     }
   }
 };

@@ -75,9 +75,6 @@ export class WsServer {
       case 'plugin_uninstall':
         await this.handlePluginUninstall(ws, clientId, payload);
         break;
-      case 'plugin_run_result':
-        await this.handlePluginResult(clientId, payload);
-        break;
       case 'plugin_message':
         await this.handlePluginMessage(clientId, payload);
         break;
@@ -192,16 +189,6 @@ export class WsServer {
     }
   }
 
-  async handlePluginResult(clientId, payload) {
-    const { pluginName, success } = payload;
-    console.log(`[RESULT] ${pluginName}: ${success ? '成功' : '失败'}`);
-
-    await this.pluginManager.handlePluginMessage(pluginName, clientId, {
-      type: 'result',
-      ...payload
-    });
-  }
-
   async handlePluginMessage(clientId, payload) {
     const { pluginName, message } = payload;
     console.log(`[MSG] ${pluginName} <- ${clientId}:`, message);
@@ -252,10 +239,6 @@ export class WsServer {
     for (const clientId of plugin.enabled) {
       this.sendToClient(clientId, type, payload);
     }
-  }
-
-  triggerPluginRun(clientId, pluginName, config = {}) {
-    this.sendToClient(clientId, 'plugin_run', { pluginName, config });
   }
 
   getClientInfo(clientId) {
