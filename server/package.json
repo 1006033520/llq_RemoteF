@@ -1,0 +1,17 @@
+{
+  "name": "remotef-server",
+  "version": "1.0.0",
+  "description": "RemoteF 服务端 - 插件分发管理",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.0"
+  }
+}

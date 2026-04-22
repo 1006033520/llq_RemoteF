@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RemoteF</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 360px;
+      min-height: 400px;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #e2e8f0;
+    }
+
+    .header {
+      padding: 1.25rem;
+      background: rgba(30, 41, 59, 0.5);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+    }
+
+    .title h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #6b7280;
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: #22c55e; }
+    .status-dot.disconnected { background: #ef4444; }
+
+    .server-url {
+      font-size: 0.75rem;
+      color: #64748b;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #475569; color: white; }
+    .btn-secondary:hover { background: #64748b; }
+
+    .content {
+      padding: 1rem;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+
+    .plugin-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .plugin-item {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      transition: all 0.2s;
+    }
+    .plugin-item:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      background: rgba(30, 41, 59, 0.8);
+    }
+
+    .plugin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+
+    .plugin-info h3 {
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+    .plugin-info p {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    .plugin-status {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.2);
+    }
+
+    .plugin-status .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    /* 状态颜色 */
+    .status-idle .dot { background: #94a3b8; }
+    .status-running .dot { background: #22c55e; animation: pulse 1.5s infinite; }
+    .status-error .dot { background: #ef4444; }
+    .status-stopped .dot { background: #f59e0b; }
+    .status-installing .dot { background: #3b82f6; animation: pulse 1s infinite; }
+    .status-uninstalling .dot { background: #f59e0b; animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .status-idle .label { color: #94a3b8; }
+    .status-running .label { color: #22c55e; }
+    .status-error .label { color: #ef4444; }
+    .status-stopped .label { color: #f59e0b; }
+    .status-installing .label { color: #3b82f6; }
+    .status-uninstalling .label { color: #f59e0b; }
+
+    .plugin-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .btn-small {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.7rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-run {
+      background: #22c55e;
+      color: white;
+    }
+    .btn-run:hover { background: #16a34a; }
+    .btn-run:disabled { background: #374151; color: #6b7280; cursor: not-allowed; }
+
+    .btn-stop {
+      background: #f59e0b;
+      color: white;
+    }
+    .btn-stop:hover { background: #d97706; }
+
+    .btn-delete {
+      background: #ef4444;
+      color: white;
+    }
+    .btn-delete:hover { background: #dc2626; }
+
+    .plugin-error {
+      font-size: 0.7rem;
+      color: #ef4444;
+      margin-top: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      background: rgba(239, 68, 68, 0.1);
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: #64748b;
+    }
+    .empty-state .icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .footer {
+      padding: 1rem;
+      border-top: 1px solid rgba(148, 163, 184, 0.1);
+      display: flex;
+      justify-content: space-between;
+    }
+    .footer a {
+      color: #3b82f6;
+      text-decoration: none;
+      font-size: 0.8rem;
+    }
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">
+      <div class="logo">⚡</div>
+      <h1>RemoteF</h1>
+    </div>
+    <div class="status-bar">
+      <div class="status">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">未连接</span>
+      </div>
+      <span class="server-url" id="server-url">未配置</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">已安装插件</div>
+    <div class="plugin-list" id="plugin-list">
+      <div class="loading">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span style="font-size: 0.75rem; color: #64748b;">v1.0.0</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

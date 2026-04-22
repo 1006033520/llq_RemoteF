@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+
+# 构建输出
+extension/build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
+
+# 临时文件
+*.tmp
+*.temp
+
+# TypeScript 编译输出
+server/dist/
+server/out/
+
+# Server 构建
+server/build/

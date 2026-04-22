@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "RemoteF Client",
+  "version": "1.0.0",
+  "description": "RemoteF 客户端 - 接收并运行服务端下发的插件",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "scripting",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "RemoteF"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/plugin-runtime.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {}
+}

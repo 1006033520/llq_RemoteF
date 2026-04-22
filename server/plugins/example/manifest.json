@@ -1,0 +1,14 @@
+{
+  "name": "example",
+  "version": "1.0.0",
+  "description": "示例插件 - 演示 RemoteF 插件开发",
+  "author": "RemoteF",
+  "server": {
+    "entry": "server.js"
+  },
+  "client": {
+    "directory": "client",
+    "entry": "content.js",
+    "permissions": ["storage"]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "example",
+  "version": "1.0.0",
+  "description": "示例插件客户端模块",
+  "permissions": ["storage"],
+  "config": {
+    "enabled": true,
+    "autoReport": false
+  }
+}

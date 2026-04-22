@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RemoteF 设置</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: #f8fafc;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="url"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    .form-group input::placeholder {
+      color: #475569;
+    }
+
+    .form-hint {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #3b82f6;
+    }
+
+    .checkbox-group label {
+      font-size: 0.9rem;
+      color: #e2e8f0;
+      cursor: pointer;
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+    .btn-secondary {
+      background: #475569;
+      color: white;
+    }
+    .btn-secondary:hover {
+      background: #64748b;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 1rem;
+      background: #0f172a;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #6b7280;
+    }
+    .status-dot.connected { background: #22c55e; }
+    .status-dot.error { background: #ef4444; }
+
+    .status-text {
+      font-size: 0.9rem;
+    }
+
+    .alert {
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+    }
+    .alert-success {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #86efac;
+    }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .info-block {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.85rem;
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚡ RemoteF 设置</h1>
+
+    <!-- 连接状态 -->
+    <div class="status-indicator">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-text" id="status-text">检查中...</span>
+    </div>
+
+    <!-- 连接配置 -->
+    <div class="card">
+      <div class="card-title">🔌 连接配置</div>
+
+      <div class="form-group">
+        <label for="server-url">服务端地址</label>
+        <input
+          type="url"
+          id="server-url"
+          placeholder="http://localhost:3000"
+          autocomplete="off"
+        >
+        <p class="form-hint">填写 RemoteF 服务端的 HTTP 地址（如 http://192.168.1.100:3000）</p>
+      </div>
+
+      <div class="form-group">
+        <label for="client-name">客户端名称（可选）</label>
+        <input
+          type="text"
+          id="client-name"
+          placeholder="自动生成"
+          autocomplete="off"
+        >
+        <p class="form-hint">用于在服务端识别此客户端，不填则自动生成</p>
+      </div>
+
+      <div class="form-group checkbox-group">
+        <input type="checkbox" id="auto-connect" checked>
+        <label for="auto-connect">启动时自动连接</label>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" id="save-btn">💾 保存配置</button>
+        <button class="btn btn-secondary" id="connect-btn">🔄 立即连接</button>
+      </div>
+
+      <div id="alert-container"></div>
+    </div>
+
+    <!-- 使用说明 -->
+    <div class="card">
+      <div class="card-title">📖 使用说明</div>
+      <div class="info-block">
+        <p><strong>1. 配置服务端</strong></p>
+        <p style="margin-top: 0.5rem; color: #64748b;">
+          在上方填写 RemoteF 服务端的地址，然后保存配置。
+        </p>
+        <p style="margin-top: 1rem;"><strong>2. 启动服务端</strong></p>
+        <p style="margin-top: 0.5rem; color: #64748b;">
+          服务端需要在服务器上运行，并确保网络可达。
+        </p>
+        <p style="margin-top: 1rem;"><strong>3. 安装插件</strong></p>
+        <p style="margin-top: 0.5rem; color: #64748b;">
+          登录服务端管理界面（/admin）安装插件，插件会自动同步到客户端。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "remotef-extension",
+  "version": "1.0.0",
+  "description": "RemoteF Chrome Extension Client",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "clean": "node scripts/clean.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  }
+}
