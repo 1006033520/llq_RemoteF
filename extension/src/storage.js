@@ -32,6 +32,29 @@ export class Storage {
     }
   }
 
+  // ===== 客户端身份（永久唯一 ID）=====
+
+  /**
+   * 获取客户端唯一 ID。
+   * 首次调用时生成 UUID v4 并持久化到 storage，后续始终返回相同值。
+   * 不受重连、更新、浏览器重启影响，只有卸载扩展才会消失。
+   */
+  async getClientId() {
+    const KEY = 'remotef_client_id';
+    const result = await this.storage.get(KEY);
+    if (result[KEY]) {
+      return result[KEY];
+    }
+    // 生成 UUID v4
+    const id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 0x0f) | (c === 'x' ? 0 : 0x80);
+      return (c === 'x' ? r : (r & 0x3f) | 0x80).toString(16);
+    });
+    await this.storage.set({ [KEY]: id });
+    console.log('[Storage] 生成客户端唯一 ID:', id);
+    return id;
+  }
+
   // ===== 配置操作 =====
 
   async getConfig() {

@@ -39,12 +39,15 @@ class RemoteFServer {
 
     // WebSocket 事件处理
     this.wss.on('connection', async (ws) => {
-      const clientId = uuidv4();
-      ws.clientId = clientId;
+      // 临时会话 ID，仅用于在 register 前索引这个 ws 对象
+      // register 之后会用客户端的持久 clientId 替换
+      const sessionId = uuidv4();
+      ws.sessionId = sessionId;
+      ws.clientId = null;  // 等 register 消息到达后才确定
       ws.isAlive = true;
-      this.clients.set(clientId, ws);
+      this.clients.set(sessionId, ws);
 
-      console.log(`🔌 客户端连接: ${clientId}`);
+      console.log(`🔌 新连接 (session=${sessionId})`);
 
       // 心跳
       ws.on('pong', () => { ws.isAlive = true; });
@@ -53,7 +56,9 @@ class RemoteFServer {
       ws.on('message', async (data) => {
         try {
           const message = JSON.parse(data.toString());
-          await this.handleMessage(ws, clientId, message);
+          // 消息里用实际的 clientId（register 后才有），否则用 sessionId
+          const id = ws.clientId || ws.sessionId;
+          await this.handleMessage(ws, id, message);
         } catch (err) {
           console.error('消息解析失败:', err);
         }
@@ -61,17 +66,18 @@ class RemoteFServer {
 
       // 断开
       ws.on('close', () => {
-        this.handleDisconnect(clientId);
+        this.handleDisconnect(ws.clientId || ws.sessionId);
       });
 
-      // 发送欢迎
-      this.sendToClient(clientId, 'connected', {
-        clientId,
-        message: 'Connected to RemoteF server'
-      });
+      // 发送欢迎（此时 clientId 还未确认，先告知连接成功）
+      ws.send(JSON.stringify({
+        type: 'connected',
+        payload: { message: 'Connected to RemoteF server' },
+        timestamp: Date.now()
+      }));
 
       // 通知插件
-      await this.pluginManager.notifyClientEvent('connect', clientId);
+      await this.pluginManager.notifyClientEvent('connect', sessionId);
     });
 
     // 设置 API 路由
@@ -124,7 +130,7 @@ class RemoteFServer {
     // 获取客户端列表
     app.get('/api/clients', (req, res) => {
       const clients = Array.from(this.clients.entries()).map(([id, ws]) => ({
-        clientId: id,
+        clientId: ws.clientId || id,
         name: ws.clientName || 'Unknown',
         platform: ws.platform,
         isOnline: ws.isAlive
@@ -178,27 +184,46 @@ class RemoteFServer {
     });
   }
 
-  async handleMessage(ws, clientId, message) {
+  async handleMessage(ws, currentId, message) {
     const { type, payload } = message;
 
     switch (type) {
-      case 'register':
+      case 'register': {
+        const persistentId = payload.clientId;  // 客户端持久 UUID
+
+        if (persistentId && persistentId !== ws.sessionId) {
+          // 迁移：从 sessionId 换成 clientId
+          this.clients.delete(ws.sessionId);
+          ws.clientId = persistentId;
+          this.clients.set(persistentId, ws);
+          console.log(`📱 注册: sessionId=${ws.sessionId} → clientId=${persistentId}`);
+        } else {
+          ws.clientId = persistentId || ws.sessionId;
+        }
+
         ws.clientName = payload.name;
         ws.platform = payload.platform;
-        console.log(`📱 客户端注册: ${ws.clientName} (${clientId})`);
-        this.sendToClient(clientId, 'registered', { success: true, plugins: this.pluginManager.list() });
+        console.log(`✅ 客户端已注册: ${ws.clientName} (${ws.clientId})`);
+
+        this.sendToClient(ws.clientId, 'registered', {
+          success: true,
+          clientId: ws.clientId,
+          plugins: this.pluginManager.list()
+        });
         break;
+      }
 
       case 'plugin_list':
-        this.sendToClient(clientId, 'plugin_list', { plugins: this.pluginManager.list() });
+        this.sendToClient(ws.clientId || currentId, 'plugin_list', { plugins: this.pluginManager.list() });
         break;
 
-      case 'plugin_install':
+      case 'plugin_install': {
         const module = this.pluginManager.getClientModule(payload.pluginName);
         if (module) {
-          this.sendToClient(clientId, 'plugin_push', { pluginName: payload.pluginName, module });
+          this.sendToClient(ws.clientId || currentId, 'plugin_push', { pluginName: payload.pluginName, module });
         }
         break;
+      }
 
       case 'plugin_run_result':
         console.log(`📨 插件 ${payload.pluginName} 结果:`, payload.success ? '成功' : '失败');
@@ -209,10 +234,14 @@ class RemoteFServer {
   handleDisconnect(clientId) {
     const ws = this.clients.get(clientId);
     this.clients.delete(clientId);
+    // 同时清理可能残留的 sessionId 条目
+    if (ws?.sessionId && ws.sessionId !== clientId) {
+      this.clients.delete(ws.sessionId);
+    }
     if (ws?.clientName) {
       this.clientsByName.delete(ws.clientName);
     }
-    console.log(`🔴 客户端断开: ${clientId}`);
+    console.log(`🔴 客户端断开: ${ws?.clientName || clientId}`);
     this.pluginManager.notifyClientEvent('disconnect', clientId);
   }
 

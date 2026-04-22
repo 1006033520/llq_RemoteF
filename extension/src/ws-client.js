@@ -12,6 +12,7 @@ export class WSClient {
     this.ws = null;
     this.reconnectTimer = null;
     this.isConnected = false;
+    // clientId 现在是持久化的唯一 ID，从 storage 加载后保持不变
     this.clientId = null;
     this.messageHandlers = new Map();
   }
@@ -28,11 +29,9 @@ export class WSClient {
       return;
     }
 
-    if (!config.clientName) {
-      config.clientName = `Client-${Date.now().toString(36)}`;
-      await storage.saveConfig(config);
-      console.log('[WSClient] 生成并保存客户端名称:', config.clientName);
-    }
+    // 加载持久唯一 ID（首次自动生成并保存）
+    this.clientId = await storage.getClientId();
+    console.log('[WSClient] 客户端唯一 ID:', this.clientId);
 
     let wsUrl = config.serverUrl.trim();
     if (!wsUrl.startsWith('http://') && !wsUrl.startsWith('https://')) {
@@ -60,10 +59,12 @@ export class WSClient {
       this.isConnected = true;
       clearTimeout(this.reconnectTimer);
 
+      // 注册时携带持久 clientId，服务端可用此 ID 跨连接识别同一客户端
       this.send({
         type: 'register',
         payload: {
-          name: config.clientName,
+          clientId: this.clientId,
+          name: config.clientName || this.clientId,
           version: config.clientVersion,
           platform: 'chrome-extension',
           extensions: pluginManager.getNames()
@@ -78,7 +79,7 @@ export class WSClient {
       console.log('[WSClient] WebSocket 连接关闭:', event.code, event.reason);
       this.isConnected = false;
       this.ws = null;
-      this.clientId = null;
+      // clientId 是持久 ID，断线后不清空，重连后继续使用
 
       this.updateBadge('未连接', 'red');
       this.emit('connection_changed', { connected: false });
@@ -116,7 +117,7 @@ export class WSClient {
       this.ws = null;
     }
     this.isConnected = false;
-    this.clientId = null;
+    // clientId 是持久 ID，主动断开也不清空
     clearTimeout(this.reconnectTimer);
     this.updateBadge('未连接', 'gray');
     this.emit('connection_changed', { connected: false });
