@@ -167,39 +167,60 @@ const RemoteFRuntime = {
           });
         },
 
-        // 监听网络请求
+        // 监听 fetch 请求
         watchFetch(callback) {
           const originalFetch = window.fetch;
+          window.__remotef_fetch = window.__remotef_fetch || originalFetch;
           window.fetch = async (...args) => {
-            const response = await originalFetch(...args);
+            const response = await window.__remotef_fetch(...args);
             callback({
               url: args[0],
+              method: (args[1]?.method || 'GET').toUpperCase(),
               options: args[1],
               response: response.clone()
             });
             return response;
           };
-
           return () => {
-            window.fetch = originalFetch;
+            window.fetch = window.__remotef_fetch;
           };
         },
 
-        // 注入脚本
+        // 监听 XHR 请求
+        watchXHR(callback) {
+          const originalOpen = XMLHttpRequest.prototype.open;
+          const originalSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+            this.__remotef_info = { method, url };
+            return originalOpen.call(this, method, url, ...rest);
+          };
+          XMLHttpRequest.prototype.send = function (...args) {
+            this.addEventListener('load', () => {
+              callback(this.__remotef_info);
+            });
+            return originalSend.apply(this, args);
+          };
+          return () => {
+            XMLHttpRequest.prototype.open = originalOpen;
+            XMLHttpRequest.prototype.send = originalSend;
+          };
+        },
+
+        // 注入脚本到页面
         injectScript(code) {
           const script = document.createElement('script');
           script.textContent = code;
           script.id = `remotef-${pluginName}-injected`;
-          document.head.appendChild(script);
+          (document.head || document.documentElement).appendChild(script);
           return script;
         },
 
-        // 注入样式
+        // 注入样式到页面
         injectStyle(css) {
           const style = document.createElement('style');
           style.textContent = css;
           style.id = `remotef-${pluginName}-style`;
-          document.head.appendChild(style);
+          (document.head || document.documentElement).appendChild(style);
           return style;
         }
       },
@@ -247,10 +268,53 @@ const RemoteFRuntime = {
 
 // 监听来自 background script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.target === 'content') {
-    RemoteFRuntime.handleMessage(message);
-    sendResponse({ success: true });
+  if (message.target !== 'content') return;
+
+  const { type, payload } = message;
+
+  // plugin_execute: 来自 background 的插件执行请求
+  if (type === 'plugin_execute') {
+    const { pluginName, code, config } = payload;
+    console.log(`[RemoteF Runtime] 执行插件: ${pluginName}`);
+
+    try {
+      // 执行插件代码，获取插件实例
+      // eslint-disable-next-line no-eval
+      const pluginInstance = eval(code);
+
+      if (!pluginInstance) {
+        sendResponse({ success: false, error: '插件代码未返回有效实例' });
+        return;
+      }
+
+      // 创建运行时上下文
+      const context = RemoteFRuntime.createContext(pluginName);
+
+      // 调用 init（如果存在）
+      if (pluginInstance.init) {
+        try {
+          pluginInstance.init(context);
+        } catch (initErr) {
+          console.warn(`[${pluginName}] init 警告:`, initErr.message);
+        }
+      }
+
+      // 调用 run
+      if (pluginInstance.run) {
+        const result = pluginInstance.run(context, config || {});
+        sendResponse({ success: true, result });
+      } else {
+        sendResponse({ success: true, result: '插件已初始化（无 run 方法）' });
+      }
+    } catch (err) {
+      console.error(`[RemoteF Runtime] 插件 ${pluginName} 执行失败:`, err);
+      sendResponse({ success: false, error: err.message });
+    }
+    return; // 异步响应
   }
+
+  RemoteFRuntime.handleMessage(message);
+  sendResponse({ success: true });
 });
 
 // 导出到全局

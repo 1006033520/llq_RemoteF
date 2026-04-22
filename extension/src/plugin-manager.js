@@ -57,18 +57,20 @@ export class PluginManager {
       throw new Error(`找不到入口文件: ${mainFile}`);
     }
 
-    // 保存代码到存储，供 content script 读取
+    // 保存代码到 storage，供 content script 读取
     await storage.savePluginCode(module.manifest.name, code);
 
-    // 返回代理对象，实际执行由 content script 处理
     return {
-      _isProxy: true,
+      _isProxy: false, // 标记为真实实例
       _pluginName: module.manifest.name,
+      _mainFile: mainFile,
+      _code: code,
+      _module: module,
       init: async (ctx) => {
         console.log('[PluginManager] 插件初始化:', ctx.pluginName);
       },
       run: async (ctx, config) => {
-        console.log('[PluginManager] 插件运行:', ctx.pluginName);
+        console.log('[PluginManager] 插件运行:', ctx.pluginName, config);
         return { queued: true, config };
       }
     };
@@ -141,17 +143,56 @@ export class PluginManager {
       return { success: false, error };
     }
 
+    // 从实例获取插件代码
+    const code = plugin.instance._code;
+    if (!code) {
+      const error = '插件代码缺失';
+      this.emit('error', { pluginName, error });
+      return { success: false, error };
+    }
+
     try {
-      const ctx = this.createContext(pluginName, sendFunc);
-      const result = await plugin.instance.run(ctx, config);
+      // 获取当前活动标签页
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+
+      if (!tab?.id) {
+        const error = '无法获取当前活动标签页';
+        this.emit('error', { pluginName, error });
+        return { success: false, error };
+      }
+
+      console.log('[PluginManager] 向标签页发送插件:', tab.id, tab.url);
+
+      // 通过 content script 的 plugin-runtime 执行插件
+      // 等待 content script 响应，最多 10 秒
+      const execResult = await chrome.tabs.sendMessage(tab.id, {
+        target: 'content',
+        type: 'plugin_execute',
+        payload: {
+          pluginName,
+          code,
+          config: config || {}
+        }
+      }).catch((err) => {
+        console.error('[PluginManager] 无法联系 content script:', err.message);
+        return { success: false, error: `标签页通信失败: ${err.message}` };
+      });
+
+      console.log('[PluginManager] 插件执行结果:', execResult);
 
       plugin.lastRun = Date.now();
       plugin.runCount = (plugin.runCount || 0) + 1;
 
-      // 运行完成后回到已安装状态
-      this.setStatus(pluginName, PluginStatus.INSTALLED);
-      this.emit('run', { pluginName, result });
-      return { success: true, result };
+      if (execResult?.success !== false) {
+        this.setStatus(pluginName, PluginStatus.INSTALLED);
+        this.emit('run', { pluginName, result: execResult });
+        return { success: true, ...execResult };
+      } else {
+        this.setStatus(pluginName, PluginStatus.ERROR, execResult?.error);
+        this.emit('error', { pluginName, error: execResult?.error });
+        return { success: false, error: execResult?.error };
+      }
     } catch (err) {
       console.error('[PluginManager] 插件执行失败:', pluginName, err);
       this.setStatus(pluginName, PluginStatus.ERROR, err.message);
