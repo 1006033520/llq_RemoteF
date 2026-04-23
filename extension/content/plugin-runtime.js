@@ -312,15 +312,6 @@ const RemoteFRuntime = {
     const { type, payload } = message;
 
     switch (type) {
-      case 'plugin_message':
-        // 服务端消息转发给 MAIN 世界的同名插件
-        window.postMessage({
-          source: 'remotef-isolated',
-          type: 'server_message',
-          payload
-        }, '*');
-        break;
-
       case 'plugin_rerun': {
         const code = await this.getPluginCode(payload.pluginName);
         this.loadAndRunPlugin(payload.pluginName, code);
@@ -333,6 +324,20 @@ const RemoteFRuntime = {
 // 监听来自 background script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'content') return;
+
+  const { type, payload } = message;
+
+  // 服务端 → 客户端的消息：直接转发到 MAIN 世界
+  if (type === 'plugin_message') {
+    window.postMessage({
+      source: 'remotef-isolated',
+      type: 'server_message',
+      payload
+    }, '*');
+    sendResponse({ success: true });
+    return;
+  }
+
   RemoteFRuntime.handleMessage(message);
   sendResponse({ success: true });
 });
