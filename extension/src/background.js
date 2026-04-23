@@ -58,9 +58,8 @@ async function handleBackgroundMessage(message, sender, sendResponse) {
     }
 
     case 'get_current_tab_id': {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        sendResponse({ tabId: tabs[0]?.id });
-      });
+      // 从 sender.tab 直接拿 ID，比 tabs.query 更可靠
+      sendResponse({ tabId: sender?.tab?.id ?? null });
       return true;
     }
 

@@ -258,19 +258,19 @@ const RemoteFRuntime = {
   },
 
   /**
-   * 获取当前标签页 ID
-   * 用 chrome.tabs.getCurrent() 而不是 chrome.tabs.query()
-   * 因为 content script 不知道哪个是 active tab
+   * 获取当前标签页 ID（通过 background 获取）
    */
   async getCurrentTabId() {
     if (this._cachedTabId) return this._cachedTabId;
 
     return new Promise((resolve) => {
-      chrome.tabs.getCurrent((tab) => {
-        console.log('[RemoteF Runtime] 当前 tabId:', tab?.id);
-        this._cachedTabId = tab?.id;
-        resolve(this._cachedTabId);
-      });
+      chrome.runtime.sendMessage(
+        { target: 'background', type: 'get_current_tab_id' },
+        (response) => {
+          this._cachedTabId = response?.tabId ?? null;
+          resolve(this._cachedTabId);
+        }
+      );
     });
   },
 
