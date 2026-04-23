@@ -1,6 +1,6 @@
 # RemoteF 插件开发指南
 
-> 本文档基于 RemoteF v1.7.0+，描述如何开发自定义插件。
+> 本文档基于 RemoteF v1.8.0+，描述如何开发自定义插件。
 
 ---
 
@@ -192,9 +192,16 @@ ctx
 │   ├── getStorage(key)               // 获取插件存储 → Promise
 │   ├── setStorage(key, value)        // 设置插件存储 → Promise
 │   └── removeStorage(key)            // 删除插件存储 → Promise
-└── utils                // DOM 工具
-    ├── injectStyle(css)              // 注入 CSS 样式
-    └── injectScript(code)            // 注入 JS 脚本
+├── utils                // DOM 工具
+│   ├── injectStyle(css)              // 注入 CSS 样式
+│   └── injectScript(code)            // 注入 JS 脚本
+└── input                // 系统级输入事件（isTrusted: true）
+    ├── dispatch(type, params)        // 底层 CDP 调用 → Promise
+    ├── click(x, y, opts?)            // 鼠标点击 → Promise
+    ├── move(fx, fy, tx, ty, opts?)   // 鼠标移动（插值轨迹）→ Promise
+    ├── swipe(fx, fy, tx, ty, opts?)  // 触摸滑动（插值轨迹）→ Promise
+    ├── press(key, opts?)             // 按键 → Promise
+    └── type(text, opts?)             // 逐字输入文本 → Promise
 ```
 
 #### ctx.api 方法详解
@@ -216,12 +223,113 @@ ctx
 | `injectStyle(css)` | `HTMLStyleElement` | 在页面注入 CSS，id 为 `remotef-{pluginName}-style` |
 | `injectScript(code)` | `HTMLScriptElement` | 在页面注入 JS 脚本 |
 
+#### ctx.input — 系统级输入事件
+
+> **核心能力**：通过 Chrome DevTools Protocol (`chrome.debugger`) 在浏览器内核层派发输入事件，产生的事件 `isTrusted === true`，与真人操作完全一致，网页、滑块验证、防刷机制均无法区分。
+
+> ⚠️ **注意**：使用 `ctx.input` 时，Chrome 会在页面顶部显示"扩展程序正在调试此浏览器"黄色警告条（Chrome 安全提示，无法隐藏）。
+
+##### ctx.input.dispatch(eventType, params) — 底层 CDP 调用
+
+直接调用 CDP `Input.dispatch*` 命令，适合需要精确控制参数的场景。
+
+```javascript
+// 支持的 eventType 及对应 CDP 方法
+// 'mouse' → Input.dispatchMouseEvent
+// 'touch' → Input.dispatchTouchEvent
+// 'key'   → Input.dispatchKeyEvent
+
+// 鼠标按下
+await ctx.input.dispatch('mouse', {
+  type: 'mousePressed',
+  x: 100,
+  y: 200,
+  button: 'left',    // 'left' | 'middle' | 'right'
+  clickCount: 1
+});
+
+// 鼠标释放
+await ctx.input.dispatch('mouse', {
+  type: 'mouseReleased',
+  x: 100,
+  y: 200,
+  button: 'left',
+  clickCount: 1
+});
+
+// 鼠标移动
+await ctx.input.dispatch('mouse', { type: 'mouseMoved', x: 200, y: 300 });
+
+// 鼠标滚轮
+await ctx.input.dispatch('mouse', {
+  type: 'mouseWheel',
+  x: 100, y: 200,
+  deltaX: 0, deltaY: -300   // 负数向上滚，正数向下滚
+});
+
+// 触摸开始
+await ctx.input.dispatch('touch', {
+  type: 'touchStart',
+  touchPoints: [{ x: 100, y: 200 }]
+});
+
+// 触摸移动
+await ctx.input.dispatch('touch', {
+  type: 'touchMove',
+  touchPoints: [{ x: 200, y: 300 }]
+});
+
+// 触摸结束
+await ctx.input.dispatch('touch', { type: 'touchEnd', touchPoints: [] });
+
+// 按键
+await ctx.input.dispatch('key', { type: 'keyDown', key: 'Enter' });
+await ctx.input.dispatch('key', { type: 'keyUp', key: 'Enter' });
+```
+
+##### 便捷方法
+
+| 方法 | 参数 | 说明 |
+|------|------|------|
+| `click(x, y, opts?)` | `x, y, { button='left', clickCount=1, delay=50 }` | 鼠标点击（按下 + 释放） |
+| `move(fx, fy, tx, ty, opts?)` | `fromX, fromY, toX, toY, { steps=5, stepDelay=16 }` | 鼠标移动，支持插值步数模拟真人轨迹 |
+| `swipe(fx, fy, tx, ty, opts?)` | `fromX, fromY, toX, toY, { steps=10, stepDelay=16 }` | 触摸滑动（touchStart + touchMove × N + touchEnd） |
+| `press(key, opts?)` | `key, { delay=50 }` | 按键（keyDown + keyUp） |
+| `type(text, opts?)` | `text, { delay=50 }` | 逐字符输入文本 |
+
+```javascript
+// 点击 (100, 200)
+await ctx.input.click(100, 200);
+
+// 双击
+await ctx.input.click(100, 200, { clickCount: 2 });
+
+// 鼠标从 (0, 0) 移动到 (300, 300)，10 步插值
+await ctx.input.move(0, 0, 300, 300, { steps: 10 });
+
+// 触摸向上滑动（模拟下拉刷新）
+await ctx.input.swipe(200, 600, 200, 100, { steps: 20, stepDelay: 16 });
+
+// 按 Enter 键
+await ctx.input.press('Enter');
+
+// 组合键 Ctrl+A
+await ctx.input.dispatch('key', { type: 'keyDown', key: 'Control' });
+await ctx.input.dispatch('key', { type: 'keyDown', key: 'a' });
+await ctx.input.dispatch('key', { type: 'keyUp', key: 'a' });
+await ctx.input.dispatch('key', { type: 'keyUp', key: 'Control' });
+
+// 输入文本（逐字，每字间隔 80ms）
+await ctx.input.type('hello world', { delay: 80 });
+```
+
 ### 客户端插件注意事项
 
 1. **MAIN 世界执行**：插件代码运行在页面的主上下文中，可以直接访问 `window`、`document` 等全局对象，也可以拦截 `fetch`/`XHR` 等原生 API
-2. **通信桥接**：MAIN 世界无法直接调用 Chrome API，所有需要扩展能力的操作（如存储、连接状态）必须通过 `ctx.api` 走消息桥接
+2. **通信桥接**：MAIN 世界无法直接调用 Chrome API，所有需要扩展能力的操作（如存储、连接状态、系统输入）必须通过 `ctx.api` / `ctx.input` 走消息桥接
 3. **SPA 导航**：系统监听 `pushState`/`replaceState`/`popstate`，页面导航时会根据 `matches` 配置重新加载插件
 4. **生命周期**：`init()` → `run()`，每次页面加载或 SPA 导航时重新执行
+5. **系统级输入**：`ctx.input` 通过 CDP 派发 `isTrusted: true` 的输入事件，使用时 Chrome 会显示顶部调试警告条
 
 ---
 
@@ -450,6 +558,27 @@ WebSocket → Background → Content Script → window.postMessage
 客户端插件 ctx.onMessage(callback) 收到消息
 ```
 
+### 系统级输入事件链路
+
+```
+客户端插件 (MAIN 世界)
+    │ ctx.input.dispatch('mouse', params)
+    │ ctx.input.click(x, y)  等便捷方法
+    ▼
+window.postMessage
+    │ type: 'input_dispatch', source: 'remotef-main'
+    ▼
+Content Script (plugin-runtime.js, ISOLATED 世界)
+    │ chrome.runtime.sendMessage({ type: 'input_dispatch' })
+    ▼
+Background Script (service worker)
+    │ chrome.debugger.attach(tabId)
+    │ chrome.debugger.sendCommand(Input.dispatchMouseEvent / ...)
+    ▼
+浏览器内核
+    → 事件 isTrusted: true（与真人操作完全一致）
+```
+
 ### 隔离原则
 
 - 插件 **只能** 与同名的服务端/客户端插件通信
@@ -461,9 +590,11 @@ WebSocket → Background → Content Script → window.postMessage
 
 ## 完整示例
 
-以下是一个最简插件示例，客户端发送页面 URL 给服务端，服务端回复确认：
+### 示例一：Hello 插件（基础通信）
 
-### 主清单 manifest.json
+客户端发送页面 URL 给服务端，服务端回复确认：
+
+#### 主清单 manifest.json
 
 ```json
 {
@@ -481,7 +612,7 @@ WebSocket → Background → Content Script → window.postMessage
 }
 ```
 
-### 客户端清单 client/manifest.json
+#### 客户端清单 client/manifest.json
 
 ```json
 {
@@ -492,7 +623,7 @@ WebSocket → Background → Content Script → window.postMessage
 }
 ```
 
-### 客户端代码 client/content.js
+#### 客户端代码 client/content.js
 
 ```javascript
 module.exports = {
@@ -528,7 +659,7 @@ module.exports = {
 };
 ```
 
-### 服务端代码 server.js
+#### 服务端代码 server.js
 
 ```javascript
 export default {
@@ -549,6 +680,101 @@ export default {
         text: `已收到: ${msg.url}`
       });
     }
+  }
+};
+```
+
+---
+
+### 示例二：自动操作插件（系统级输入）
+
+服务端远程指挥客户端执行点击、滑动、输入等操作，`isTrusted: true`，防检测：
+
+#### 客户端代码 client/content.js
+
+```javascript
+module.exports = {
+  init(ctx) {
+    // 监听服务端指令
+    ctx.onMessage(async (message) => {
+      const msg = message?.message || message;
+
+      switch (msg.type) {
+        case 'click': {
+          // 点击指定坐标
+          const result = await ctx.input.click(msg.x, msg.y);
+          ctx.api.sendMessage({ type: 'done', action: 'click', result });
+          break;
+        }
+
+        case 'swipe': {
+          // 触摸滑动
+          const result = await ctx.input.swipe(
+            msg.fromX, msg.fromY,
+            msg.toX, msg.toY,
+            { steps: msg.steps || 20, stepDelay: 16 }
+          );
+          ctx.api.sendMessage({ type: 'done', action: 'swipe', result });
+          break;
+        }
+
+        case 'type': {
+          // 先点击输入框，再输入文本
+          await ctx.input.click(msg.x, msg.y);
+          await new Promise(r => setTimeout(r, 200));
+          const result = await ctx.input.type(msg.text, { delay: 60 });
+          ctx.api.sendMessage({ type: 'done', action: 'type', result });
+          break;
+        }
+
+        case 'press': {
+          // 按键
+          const result = await ctx.input.press(msg.key);
+          ctx.api.sendMessage({ type: 'done', action: 'press', result });
+          break;
+        }
+      }
+    });
+
+    // 上报就绪
+    ctx.api.sendMessage({ type: 'ready', url: window.location.href });
+  }
+};
+```
+
+#### 服务端代码 server.js
+
+```javascript
+export default {
+  manifest: {
+    name: 'auto-op',
+    version: '1.0.0',
+    description: '远程自动操作'
+  },
+
+  async onMessage(ctx, message) {
+    const msg = message?.message || message;
+
+    if (msg.type === 'ready') {
+      console.log(`[AutoOp] 客户端就绪: ${ctx.clientId}, URL: ${msg.url}`);
+    }
+
+    if (msg.type === 'done') {
+      console.log(`[AutoOp] 操作完成: ${msg.action}`, msg.result);
+    }
+  },
+
+  setupRoutes(app, pluginManager) {
+    // HTTP API：向指定客户端发送操作指令
+    app.post('/api/plugins/auto-op/action', (req, res) => {
+      const { clientId, action } = req.body;
+      // action: { type: 'click', x: 100, y: 200 }
+      //       | { type: 'swipe', fromX, fromY, toX, toY }
+      //       | { type: 'type', x, y, text }
+      //       | { type: 'press', key }
+      pluginManager.serverApi.sendToClient(clientId, 'auto-op', action);
+      res.json({ success: true });
+    });
   }
 };
 ```
@@ -580,6 +806,9 @@ export default {
 | `module.exports` 未定义 | 客户端代码使用 ES Module | 使用 `module.exports =` 或 `export default`，系统会自动转换 |
 | 端口匹配失败 | `matches` 中的端口未匹配 | 使用 `host:port` 格式，如 `http://localhost:8888/*` |
 | 版本不同步 | 清单版本号不一致 | 确保主清单、客户端清单、服务端代码中的版本号三处一致 |
+| `ctx.input` 返回 `success: false` | debugger 附加失败 | 检查 manifest.json 是否有 `debugger` 权限，重载扩展 |
+| 顶部出现黄色警告条 | `chrome.debugger` 的固有行为 | 这是 Chrome 安全提示，无法隐藏，属于正常现象 |
+| `isTrusted` 为 false | 使用了 JS `dispatchEvent` | 确保通过 `ctx.input.*` 发送，而不是自己构造 `new Event()` |
 
 ---
 
