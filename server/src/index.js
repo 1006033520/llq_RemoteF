@@ -253,9 +253,8 @@ class RemoteFServer {
         version: plugin.version,
         description: plugin.description,
         status: plugin.status,
-        enabledClients: Array.from(plugin.enabled),
         onlineClients: Array.from(this.clients.entries())
-          .filter(([, ws]) => ws.isAlive && plugin.enabled.has(ws.clientId))
+          .filter(([, ws]) => ws.isAlive)
           .map(([id, ws]) => ({
             clientId: ws.clientId || id,
             name: ws.clientName || 'Unknown',

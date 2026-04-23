@@ -210,10 +210,6 @@
         <div class="label">在线客户端</div>
       </div>
       <div class="stat-card">
-        <div class="value" id="stat-enabled">0</div>
-        <div class="label">已启用客户端</div>
-      </div>
-      <div class="stat-card">
         <div class="value" id="stat-requests">0</div>
         <div class="label">请求记录数</div>
       </div>
@@ -274,7 +270,6 @@
 
         // 更新统计
         document.getElementById('stat-online').textContent = data.onlineClients?.length || 0;
-        document.getElementById('stat-enabled').textContent = data.enabledClients?.length || 0;
 
         // 更新客户端列表
         const clientList = document.getElementById('client-list');

@@ -89,7 +89,6 @@ export class PluginManager {
       manifest,
       path: pluginDir,
       serverModule,
-      enabled: new Set(), // 启用此插件的客户端ID
       status: 'loaded'
     };
 
@@ -148,8 +147,7 @@ export class PluginManager {
       version: p.version,
       description: p.description,
       author: p.author,
-      status: p.status,
-      enabledClients: p.enabled.size
+      status: p.status
     }));
   }
 
@@ -356,23 +354,7 @@ export class PluginManager {
       plugin: {
         list: () => self.list(),
         get: (name) => self.get(name),
-        getClientModule: (name) => self.getClientModule(name),
-        enable: (name, clientId) => {
-          const p = self.plugins.get(name);
-          if (p) {
-            p.enabled.add(clientId);
-            return true;
-          }
-          return false;
-        },
-        disable: (name, clientId) => {
-          const p = self.plugins.get(name);
-          if (p) {
-            p.enabled.delete(clientId);
-            return true;
-          }
-          return false;
-        }
+        getClientModule: (name) => self.getClientModule(name)
       }
     };
   }

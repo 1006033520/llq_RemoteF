@@ -133,12 +133,9 @@ export default {
       res.json({ success: true, action, requestId });
     });
 
-    // 获取在线客户端列表（安装了本插件的）
+    // 获取在线客户端列表
     app.get(`/api/plugins/${name}/clients`, (req, res) => {
-      const clients = pluginManager.serverApi.getClients().filter(c => {
-        const plugin = pluginManager.get(name);
-        return plugin?.enabled?.has(c.clientId);
-      });
+      const clients = pluginManager.serverApi.getClients();
       res.json({ total: clients.length, clients });
     });
 

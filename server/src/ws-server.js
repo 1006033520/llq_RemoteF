@@ -145,9 +145,6 @@ export class WsServer {
       return;
     }
 
-    // 标记启用
-    plugin.enabled.add(clientId);
-
     // 发送插件
     this.sendToClient(clientId, 'plugin_push', {
       pluginName,
@@ -173,10 +170,6 @@ export class WsServer {
     console.log(`[UNINSTALL] ${clientId} 卸载 ${pluginName}`);
 
     const plugin = this.pluginManager.get(pluginName);
-    if (plugin) {
-      plugin.enabled.delete(clientId);
-    }
-
     // 通知服务端插件
     if (plugin?.serverModule?.onDisable) {
       try {
@@ -234,10 +227,11 @@ export class WsServer {
   }
 
   broadcastToPlugin(pluginName, type, payload) {
-    const plugin = this.pluginManager.get(pluginName);
-    if (!plugin) return;
-    for (const clientId of plugin.enabled) {
-      this.sendToClient(clientId, type, payload);
+    // 发送给所有在线客户端，由客户端自行判断插件是否已安装
+    for (const [clientId, ws] of this.clients) {
+      if (ws.readyState === 1) {
+        this.sendToClient(clientId, type, payload);
+      }
     }
   }
 

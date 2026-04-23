@@ -145,13 +145,9 @@ export class ServerAPI {
    * @param {object} message - 消息内容
    */
   broadcastToPluginClients(pluginName, message) {
-    if (!this.pluginManager) return;
-
-    const plugin = this.pluginManager.get(pluginName);
-    if (!plugin) return;
-
-    for (const clientId of plugin.enabled) {
-      this.sendToClient(clientId, pluginName, message);
+    // 转发给 wsServer 处理，wsServer 会发给所有在线客户端
+    if (this.wsServer) {
+      this.wsServer.broadcastToPlugin(pluginName, 'plugin_message', { pluginName, message });
     }
   }
 

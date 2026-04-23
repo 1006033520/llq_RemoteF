@@ -60,8 +60,7 @@ export class ApiServer {
         success: true,
         data: {
           ...plugin.manifest,
-          status: plugin.status,
-          enabledClients: Array.from(plugin.enabled)
+          status: plugin.status
         }
       });
     });
@@ -114,20 +113,10 @@ export class ApiServer {
         return res.status(404).json({ success: false, error: 'Client not found' });
       }
 
-      // 获取该客户端安装的插件
-      const installedPlugins = [];
-      for (const [name, plugin] of this.pluginManager.plugins) {
-        if (plugin.enabled.has(req.params.clientId)) {
-          installedPlugins.push(name);
-        }
-      }
-
+      // 获取该客户端安装的插件（由客户端主动上报，服务端不再跟踪）
       res.json({
         success: true,
-        data: {
-          ...client,
-          installedPlugins
-        }
+        data: client
       });
     });
 
@@ -179,7 +168,7 @@ export class ApiServer {
       }
 
       const onlineClients = this.wsServer ? Array.from(this.wsServer.clients?.entries?.() || [])
-        .filter(([, ws]) => ws.isAlive && plugin.enabled.has(ws.clientId))
+        .filter(([, ws]) => ws.isAlive)
         .map(([id, ws]) => ({
           clientId: ws.clientId || id,
           name: ws.clientName || 'Unknown',
@@ -191,7 +180,6 @@ export class ApiServer {
         version: plugin.version,
         description: plugin.description,
         status: plugin.status,
-        enabledClients: Array.from(plugin.enabled),
         onlineClients
       });
     });
