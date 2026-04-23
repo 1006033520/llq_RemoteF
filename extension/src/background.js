@@ -161,6 +161,20 @@ function handleApiRequest(payload, sendResponse) {
       break;
     }
 
+    case 'onMessage': {
+      const { pluginName, handler } = params;
+      clientApi.onMessage(pluginName, handler);
+      sendResponse({ success: true });
+      break;
+    }
+
+    case 'offMessage': {
+      const { pluginName } = params;
+      clientApi.offMessage(pluginName);
+      sendResponse({ success: true });
+      break;
+    }
+
     default: {
       sendResponse({ error: `Unknown API method: ${method}` });
     }
