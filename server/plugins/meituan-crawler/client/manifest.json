@@ -1,0 +1,14 @@
+{
+  "name": "meituan-crawler",
+  "version": "1.0.0",
+  "description": "美团数据抓取 - 抓取接口数据、模拟触摸滑动、AI 操控页面",
+  "permissions": ["storage"],
+  "matches": [
+    "https://cactivityapi-sc.waimai.meituan.com/*"
+  ],
+  "config": {
+    "enabled": true,
+    "captureInterval": 5000,
+    "autoReport": true
+  }
+}

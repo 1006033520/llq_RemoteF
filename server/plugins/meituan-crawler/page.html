@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>美团数据抓取 - RemoteF</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    .header h1 { font-size: 1.5rem; }
+    .badge { background: #3b82f6; color: white; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8rem; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .grid-full { grid-column: 1 / -1; }
+    .card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .card-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stats-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .stat-box {
+      flex: 1;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat-value { font-size: 1.8rem; font-weight: 700; color: #818cf8; }
+    .stat-label { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }
+    th { color: #64748b; font-weight: 500; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+    .method {
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .method-GET { background: #166534; color: #86efac; }
+    .method-POST { background: #1e40af; color: #93c5fd; }
+    .method-PUT { background: #854d0e; color: #fde047; }
+    .method-DELETE { background: #991b1b; color: #fca5a5; }
+    .url-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; }
+    .status-ok { color: #22c55e; }
+    .status-err { color: #ef4444; }
+
+    .client-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto; }
+    .client-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    .client-info { flex: 1; }
+    .client-id { font-size: 0.8rem; font-weight: 600; color: #818cf8; }
+    .client-meta { font-size: 0.7rem; color: #64748b; margin-top: 0.2rem; }
+    .client-online { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+    .client-captures { font-size: 0.75rem; color: #94a3b8; }
+
+    .ai-cmd {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .ai-cmd select, .ai-cmd input {
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .ai-cmd select { min-width: 140px; }
+    .ai-cmd input[type="number"] { width: 100px; }
+    .ai-cmd input[type="text"] { flex: 1; min-width: 120px; }
+    .ai-cmd input:focus { outline: none; border-color: #3b82f6; }
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #475569; color: white; }
+    .btn-secondary:hover { background: #64748b; }
+
+    .response-box {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    .response-box.success { border-color: rgba(34, 197, 94, 0.3); }
+    .response-box.error { border-color: rgba(239, 68, 68, 0.3); }
+
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #64748b;
+      background: transparent;
+      border: 1px solid transparent;
+    }
+    .tab.active {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: rgba(59, 130, 246, 0.3);
+      color: #818cf8;
+    }
+
+    .empty { text-align: center; padding: 2rem; color: #475569; font-size: 0.85rem; }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🍔 美团数据抓取</h1>
+      <span class="badge">v1.0.0</span>
+      <span class="badge" id="client-count">0 客户端</span>
+    </div>
+
+    <div class="grid">
+      <!-- 统计 -->
+      <div class="card">
+        <div class="card-title">📊 抓取统计</div>
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-value" id="total-captures">0</div>
+            <div class="stat-label">总抓取数</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="online-clients">0</div>
+            <div class="stat-label">在线客户端</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="api-count">0</div>
+            <div class="stat-label">接口数</div>
+          </div>
+        </div>
+        <div id="method-stats" style="font-size: 0.8rem; color: #64748b;"></div>
+      </div>
+
+      <!-- 客户端列表 -->
+      <div class="card">
+        <div class="card-title">📱 已连接客户端</div>
+        <div class="client-list" id="client-list">
+          <div class="empty">暂无连接客户端</div>
+        </div>
+      </div>
+
+      <!-- AI 控制台 -->
+      <div class="card grid-full">
+        <div class="card-title">🤖 AI 命令通道</div>
+        <div class="tabs">
+          <div class="tab active" data-tab="quick">快捷命令</div>
+          <div class="tab" data-tab="advanced">高级命令</div>
+        </div>
+
+        <div class="ai-cmd">
+          <select id="cmd-action">
+            <option value="getPageInfo">getPageInfo - 获取页面信息</option>
+            <option value="getRequests">getRequests - 获取抓取记录</option>
+            <option value="findElement">findElement - 查找元素</option>
+            <option value="click">click - 点击坐标</option>
+            <option value="swipe">swipe - 触摸滑动</option>
+            <option value="scrollTo">scrollTo - 滚动页面</option>
+            <option value="wait">wait - 等待</option>
+          </select>
+          <input type="text" id="cmd-client" placeholder="客户端 ID（留空则广播）">
+          <input type="text" id="cmd-params" placeholder="参数 JSON（可选）">
+          <button class="btn btn-primary" id="cmd-send">发送</button>
+          <button class="btn btn-secondary" id="cmd-send-sync">发送并等待响应</button>
+        </div>
+
+        <div class="response-box" id="cmd-response">等待发送命令...</div>
+      </div>
+
+      <!-- 抓取记录 -->
+      <div class="card grid-full">
+        <div class="card-title">📡 最近抓取记录</div>
+        <div style="display:flex; gap:0.5rem; margin-bottom: 1rem;">
+          <input type="text" id="filter-url" placeholder="筛选 URL（可选）" style="flex:1; padding:0.5rem; background:#0f172a; border:1px solid rgba(148,163,184,0.2); border-radius:6px; color:#e2e8f0; font-size:0.8rem;">
+          <button class="btn btn-primary" id="filter-btn">筛选</button>
+          <button class="btn btn-secondary" id="refresh-btn">刷新</button>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>方法</th>
+                <th>URL</th>
+                <th>状态</th>
+                <th>耗时</th>
+              </tr>
+            </thead>
+            <tbody id="capture-tbody">
+              <tr><td colspan="5" class="empty">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const pluginName = 'meituan-crawler';
+    let currentClientId = null;
+
+    function api(path, options = {}) {
+      return fetch(`/api/plugins/${pluginName}${path}`, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+        body: options.body ? JSON.stringify(options.body) : undefined
+      }).then(r => r.json());
+    }
+
+    async function refreshStats() {
+      const stats = await api('/stats');
+      document.getElementById('total-captures').textContent = stats.total || 0;
+      document.getElementById('online-clients').textContent = stats.recentClients?.length || 0;
+      document.getElementById('client-count').textContent = `${stats.clients || 0} 客户端`;
+
+      const methodStats = stats.byMethod || {};
+      const methodHtml = Object.entries(methodStats).map(([m, c]) =>
+        `<span class="method method-${m}">${m} ${c}</span>`
+      ).join(' ');
+      document.getElementById('method-stats').innerHTML = methodHtml || '无数据';
+
+      const clients = await api('/clients');
+      const clientList = document.getElementById('client-list');
+      if (clients.clients && clients.clients.length > 0) {
+        currentClientId = clients.clients[0].clientId;
+        document.getElementById('cmd-client').value = currentClientId;
+        clientList.innerHTML = clients.clients.map(c => `
+          <div class="client-item">
+            <div class="client-online"></div>
+            <div class="client-info">
+              <div class="client-id">${c.clientId}</div>
+              <div class="client-meta">${c.name || c.platform || '未知平台'} · ${c.isOnline ? '在线' : '离线'}</div>
+            </div>
+            <div class="client-captures">${stats.recentClients?.find(r => r.clientId === c.clientId)?.captureCount || 0} 抓取</div>
+          </div>
+        `).join('');
+      } else {
+        clientList.innerHTML = '<div class="empty">暂无连接客户端</div>';
+      }
+    }
+
+    async function refreshCaptures() {
+      const filter = document.getElementById('filter-url').value;
+      const captures = await api(`/captures?limit=100&url=${encodeURIComponent(filter)}`);
+      const tbody = document.getElementById('capture-tbody');
+      document.getElementById('api-count').textContent = captures.total || 0;
+
+      if (captures.captures && captures.captures.length > 0) {
+        tbody.innerHTML = captures.captures.reverse().map(c => {
+          const t = new Date(c.timestamp).toLocaleTimeString();
+          const statusOk = c.status >= 200 && c.status < 400;
+          const time = c.duration ? `${c.duration}ms` : '-';
+          return `<tr>
+            <td>${t}</td>
+            <td><span class="method method-${c.method}">${c.method}</span></td>
+            <td class="url-cell" title="${c.url}">${c.url}</td>
+            <td class="${statusOk ? 'status-ok' : 'status-err'}">${c.status || '-'}</td>
+            <td>${time}</td>
+          </tr>`;
+        }).join('');
+      } else {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+      }
+    }
+
+    async function sendCommand(sync = false) {
+      const action = document.getElementById('cmd-action').value;
+      let clientId = document.getElementById('cmd-client').value.trim();
+      const paramsStr = document.getElementById('cmd-params').value.trim();
+      let params = {};
+      if (paramsStr) {
+        try { params = JSON.parse(paramsStr); } catch (e) { alert('参数 JSON 格式错误'); return; }
+      }
+      const box = document.getElementById('cmd-response');
+
+      if (!clientId) {
+        // 广播
+        const result = await api('/broadcast', {
+          method: 'POST',
+          body: { action, params }
+        });
+        box.textContent = JSON.stringify(result, null, 2);
+        box.className = 'response-box ' + (result.success ? 'success' : 'error');
+        return;
+      }
+
+      const endpoint = sync ? '/command-sync' : '/command';
+      box.textContent = '发送中...';
+      box.className = 'response-box';
+
+      try {
+        const result = await api(endpoint, {
+          method: 'POST',
+          body: { clientId, action, params }
+        });
+        box.textContent = JSON.stringify(result, null, 2);
+        box.className = 'response-box ' + (result.success ? 'success' : 'error');
+      } catch (e) {
+        box.textContent = '错误: ' + e.message;
+        box.className = 'response-box error';
+      }
+    }
+
+    // 初始化
+    refreshStats();
+    refreshCaptures();
+    setInterval(() => { refreshStats(); refreshCaptures(); }, 5000);
+
+    // 事件绑定
+    document.getElementById('cmd-send').addEventListener('click', () => sendCommand(false));
+    document.getElementById('cmd-send-sync').addEventListener('click', () => sendCommand(true));
+    document.getElementById('filter-btn').addEventListener('click', refreshCaptures);
+    document.getElementById('refresh-btn').addEventListener('click', () => { refreshStats(); refreshCaptures(); });
+
+    // Tab 切换
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
