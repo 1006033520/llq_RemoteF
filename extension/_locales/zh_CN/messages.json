@@ -1,0 +1,132 @@
+{
+  "extName": {
+    "message": "RemoteF Client",
+    "description": "Extension name"
+  },
+  "extDescription": {
+    "message": "RemoteF 客户端 - 接收并运行服务端下发的插件",
+    "description": "Extension description"
+  },
+
+  "statusConnected": {
+    "message": "已连接",
+    "description": "Connection status - connected"
+  },
+  "statusDisconnected": {
+    "message": "未连接",
+    "description": "Connection status - disconnected"
+  },
+  "statusConnecting": {
+    "message": "连接中...",
+    "description": "Connection status - connecting"
+  },
+  "statusChecking": {
+    "message": "检查中...",
+    "description": "Status checking"
+  },
+  "notConfigured": {
+    "message": "未配置",
+    "description": "Server not configured"
+  },
+  "noPlugins": {
+    "message": "暂无插件",
+    "description": "No plugins installed"
+  },
+  "pluginsInstalled": {
+    "message": "已安装插件",
+    "description": "Section title for installed plugins"
+  },
+
+  "settingsTitle": {
+    "message": "RemoteF 设置",
+    "description": "Settings page title"
+  },
+  "serverAddress": {
+    "message": "服务端地址",
+    "description": "Server address label"
+  },
+  "serverAddressHint": {
+    "message": "填写 RemoteF 服务端的 HTTP 地址（如 http://192.168.1.100:3000）",
+    "description": "Server address hint"
+  },
+  "clientName": {
+    "message": "客户端名称（可选）",
+    "description": "Client name label"
+  },
+  "clientNameHint": {
+    "message": "用于在服务端识别此客户端，不填则自动生成",
+    "description": "Client name hint"
+  },
+  "clientNamePlaceholder": {
+    "message": "自动生成",
+    "description": "Client name placeholder"
+  },
+  "autoConnect": {
+    "message": "启动时自动连接",
+    "description": "Auto connect on startup"
+  },
+  "saveConfig": {
+    "message": "保存配置",
+    "description": "Save config button"
+  },
+  "connectNow": {
+    "message": "立即连接",
+    "description": "Connect now button"
+  },
+  "usageTitle": {
+    "message": "使用说明",
+    "description": "Usage instructions section title"
+  },
+  "step1Title": {
+    "message": "1. 配置服务端",
+    "description": "Step 1 title"
+  },
+  "step1Desc": {
+    "message": "在上方填写 RemoteF 服务端的地址，然后保存配置。",
+    "description": "Step 1 description"
+  },
+  "step2Title": {
+    "message": "2. 启动服务端",
+    "description": "Step 2 title"
+  },
+  "step2Desc": {
+    "message": "服务端需要在服务器上运行，并确保网络可达。",
+    "description": "Step 2 description"
+  },
+  "step3Title": {
+    "message": "3. 安装插件",
+    "description": "Step 3 title"
+  },
+  "step3Desc": {
+    "message": "登录服务端管理界面（/admin）安装插件，插件会自动同步到客户端。",
+    "description": "Step 3 description"
+  },
+  "connectionConfig": {
+    "message": "连接配置",
+    "description": "Connection config section title"
+  },
+  "pluginStatusInstalled": {
+    "message": "已安装",
+    "description": "Plugin installed status"
+  },
+  "pluginStatusError": {
+    "message": "异常",
+    "description": "Plugin error status"
+  },
+  "configSaved": {
+    "message": "配置已保存",
+    "description": "Config saved success message"
+  },
+  "saveFailed": {
+    "message": "保存失败",
+    "description": "Save config failed"
+  },
+  "connectSent": {
+    "message": "连接请求已发送",
+    "description": "Connect request sent"
+  },
+  "connectFailed": {
+    "message": "连接失败",
+    "description": "Connect failed"
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "extName": {
+    "message": "RemoteF Client",
+    "description": "Extension name"
+  },
+  "extDescription": {
+    "message": "RemoteF client - receive and execute remotely distributed plugins",
+    "description": "Extension description"
+  },
+
+  "statusConnected": {
+    "message": "Connected",
+    "description": "Connection status - connected"
+  },
+  "statusDisconnected": {
+    "message": "Disconnected",
+    "description": "Connection status - disconnected"
+  },
+  "statusConnecting": {
+    "message": "Connecting...",
+    "description": "Connection status - connecting"
+  },
+  "statusChecking": {
+    "message": "Checking...",
+    "description": "Status checking"
+  },
+  "notConfigured": {
+    "message": "Not configured",
+    "description": "Server not configured"
+  },
+  "noPlugins": {
+    "message": "No plugins",
+    "description": "No plugins installed"
+  },
+  "pluginsInstalled": {
+    "message": "Installed Plugins",
+    "description": "Section title for installed plugins"
+  },
+
+  "settingsTitle": {
+    "message": "RemoteF Settings",
+    "description": "Settings page title"
+  },
+  "serverAddress": {
+    "message": "Server Address",
+    "description": "Server address label"
+  },
+  "serverAddressHint": {
+    "message": "Enter RemoteF server HTTP address (e.g. http://192.168.1.100:3000)",
+    "description": "Server address hint"
+  },
+  "clientName": {
+    "message": "Client Name (optional)",
+    "description": "Client name label"
+  },
+  "clientNameHint": {
+    "message": "Used to identify this client on the server. Leave blank to auto-generate.",
+    "description": "Client name hint"
+  },
+  "clientNamePlaceholder": {
+    "message": "Auto-generated",
+    "description": "Client name placeholder"
+  },
+  "autoConnect": {
+    "message": "Auto-connect on startup",
+    "description": "Auto connect on startup"
+  },
+  "saveConfig": {
+    "message": "Save",
+    "description": "Save config button"
+  },
+  "connectNow": {
+    "message": "Connect Now",
+    "description": "Connect now button"
+  },
+  "usageTitle": {
+    "message": "Usage Guide",
+    "description": "Usage instructions section title"
+  },
+  "step1Title": {
+    "message": "1. Configure Server",
+    "description": "Step 1 title"
+  },
+  "step1Desc": {
+    "message": "Enter the RemoteF server address above and save the configuration.",
+    "description": "Step 1 description"
+  },
+  "step2Title": {
+    "message": "2. Start the Server",
+    "description": "Step 2 title"
+  },
+  "step2Desc": {
+    "message": "The server needs to be running and accessible over the network.",
+    "description": "Step 2 description"
+  },
+  "step3Title": {
+    "message": "3. Install Plugins",
+    "description": "Step 3 title"
+  },
+  "step3Desc": {
+    "message": "Log in to the server admin panel (/admin) to install plugins, which will sync to the client automatically.",
+    "description": "Step 3 description"
+  },
+  "connectionConfig": {
+    "message": "Connection Config",
+    "description": "Connection config section title"
+  },
+  "pluginStatusInstalled": {
+    "message": "Installed",
+    "description": "Plugin installed status"
+  },
+  "pluginStatusError": {
+    "message": "Error",
+    "description": "Plugin error status"
+  },
+  "configSaved": {
+    "message": "Configuration saved",
+    "description": "Config saved success message"
+  },
+  "saveFailed": {
+    "message": "Save failed",
+    "description": "Save config failed"
+  },
+  "connectSent": {
+    "message": "Connect request sent",
+    "description": "Connect request sent"
+  },
+  "connectFailed": {
+    "message": "Connection failed",
+    "description": "Connect failed"
+  }
+}

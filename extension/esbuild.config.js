@@ -84,6 +84,14 @@ function copyStaticFiles() {
     mkdirSync(iconsDest, { recursive: true });
     copyDir(iconsSrc, iconsDest);
   }
+
+  // 复制 _locales（多语言支持）
+  const localesSrc = join(__dirname, '_locales');
+  const localesDest = join(buildDir, '_locales');
+  if (existsSync(localesSrc)) {
+    mkdirSync(localesDest, { recursive: true });
+    copyDir(localesSrc, localesDest);
+  }
 }
 
 function copyDir(src, dest) {

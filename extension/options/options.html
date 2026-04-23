@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RemoteF 设置</title>
+  <title>__MSG_settingsTitle__</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -191,48 +191,48 @@
 </head>
 <body>
   <div class="container">
-    <h1>⚡ RemoteF 设置</h1>
+    <h1>⚡ __MSG_settingsTitle__</h1>
 
     <!-- 连接状态 -->
     <div class="status-indicator">
       <div class="status-dot" id="status-dot"></div>
-      <span class="status-text" id="status-text">检查中...</span>
+      <span class="status-text" id="status-text">__MSG_statusChecking__</span>
     </div>
 
     <!-- 连接配置 -->
     <div class="card">
-      <div class="card-title">🔌 连接配置</div>
+      <div class="card-title">__MSG_connectionConfig__</div>
 
       <div class="form-group">
-        <label for="server-url">服务端地址</label>
+        <label for="server-url">__MSG_serverAddress__</label>
         <input
           type="url"
           id="server-url"
           placeholder="http://localhost:3000"
           autocomplete="off"
         >
-        <p class="form-hint">填写 RemoteF 服务端的 HTTP 地址（如 http://192.168.1.100:3000）</p>
+        <p class="form-hint">__MSG_serverAddressHint__</p>
       </div>
 
       <div class="form-group">
-        <label for="client-name">客户端名称（可选）</label>
+        <label for="client-name">__MSG_clientName__</label>
         <input
           type="text"
           id="client-name"
-          placeholder="自动生成"
+          placeholder="__MSG_clientNamePlaceholder__"
           autocomplete="off"
         >
-        <p class="form-hint">用于在服务端识别此客户端，不填则自动生成</p>
+        <p class="form-hint">__MSG_clientNameHint__</p>
       </div>
 
       <div class="form-group checkbox-group">
         <input type="checkbox" id="auto-connect" checked>
-        <label for="auto-connect">启动时自动连接</label>
+        <label for="auto-connect">__MSG_autoConnect__</label>
       </div>
 
       <div class="btn-group">
-        <button class="btn btn-primary" id="save-btn">💾 保存配置</button>
-        <button class="btn btn-secondary" id="connect-btn">🔄 立即连接</button>
+        <button class="btn btn-primary" id="save-btn">__MSG_saveConfig__</button>
+        <button class="btn btn-secondary" id="connect-btn">__MSG_connectNow__</button>
       </div>
 
       <div id="alert-container"></div>
@@ -240,20 +240,14 @@
 
     <!-- 使用说明 -->
     <div class="card">
-      <div class="card-title">📖 使用说明</div>
+      <div class="card-title">__MSG_usageTitle__</div>
       <div class="info-block">
-        <p><strong>1. 配置服务端</strong></p>
-        <p style="margin-top: 0.5rem; color: #64748b;">
-          在上方填写 RemoteF 服务端的地址，然后保存配置。
-        </p>
-        <p style="margin-top: 1rem;"><strong>2. 启动服务端</strong></p>
-        <p style="margin-top: 0.5rem; color: #64748b;">
-          服务端需要在服务器上运行，并确保网络可达。
-        </p>
-        <p style="margin-top: 1rem;"><strong>3. 安装插件</strong></p>
-        <p style="margin-top: 0.5rem; color: #64748b;">
-          登录服务端管理界面（/admin）安装插件，插件会自动同步到客户端。
-        </p>
+        <p><strong>__MSG_step1Title__</strong></p>
+        <p style="margin-top: 0.5rem; color: #64748b;">__MSG_step1Desc__</p>
+        <p style="margin-top: 1rem;"><strong>__MSG_step2Title__</strong></p>
+        <p style="margin-top: 0.5rem; color: #64748b;">__MSG_step2Desc__</p>
+        <p style="margin-top: 1rem;"><strong>__MSG_step3Title__</strong></p>
+        <p style="margin-top: 0.5rem; color: #64748b;">__MSG_step3Desc__</p>
       </div>
     </div>
   </div>

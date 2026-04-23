@@ -3,10 +3,15 @@
  * 插件由服务端统一管理，客户端只展示插件状态
  */
 
+// i18n 辅助
+function msg(key) {
+  return chrome.i18n.getMessage(key) || key;
+}
+
 // 插件状态映射（只有两种）
 const STATUS_LABELS = {
-  installed: '已安装',
-  error: '异常'
+  installed: msg('pluginStatusInstalled'),
+  error: msg('pluginStatusError')
 };
 
 const STATUS_CLASS = {
@@ -31,10 +36,10 @@ async function checkStatus() {
 
     if (status && status.isConnected) {
       statusDot.className = 'status-dot connected';
-      statusText.textContent = '已连接';
+      statusText.textContent = msg('statusConnected');
     } else {
       statusDot.className = 'status-dot disconnected';
-      statusText.textContent = '未连接';
+      statusText.textContent = msg('statusDisconnected');
     }
 
     if (status && status.plugins) {
@@ -49,7 +54,7 @@ async function checkStatus() {
 // 渲染插件列表
 function renderPlugins() {
   if (plugins.length === 0) {
-    pluginList.innerHTML = '<div class="empty-state"><p>暂无插件</p></div>';
+    pluginList.innerHTML = '<div class="empty-state"><p>' + msg('noPlugins') + '</p></div>';
     return;
   }
 
@@ -88,7 +93,7 @@ async function loadConfig() {
   try {
     const result = await chrome.storage.local.get('remotef_config');
     const config = result.remotef_config || {};
-    serverUrlEl.textContent = config.serverUrl || '未配置';
+    serverUrlEl.textContent = config.serverUrl || msg('notConfigured');
   } catch (err) {
     console.error('[RemoteF] 加载配置失败:', err);
   }

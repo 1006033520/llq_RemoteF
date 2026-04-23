@@ -2,7 +2,12 @@
  * RemoteF 设置页面
  */
 
-console.log('[RemoteF] options.js 加载');
+console.log('[RemoteF] options.js loaded');
+
+// i18n 辅助
+function msg(key) {
+  return chrome.i18n.getMessage(key) || key;
+}
 
 const CONFIG_KEY = 'remotef_config';
 
@@ -35,15 +40,15 @@ async function checkStatus() {
     console.log('[RemoteF] 状态:', status);
     if (status && status.isConnected) {
       statusDot.className = 'status-dot connected';
-      statusText.textContent = '已连接';
+      statusText.textContent = msg('statusConnected');
     } else {
       statusDot.className = 'status-dot';
-      statusText.textContent = '未连接';
+      statusText.textContent = msg('statusDisconnected');
     }
   } catch (err) {
     console.error('[RemoteF] 状态检查失败:', err);
     statusDot.className = 'status-dot error';
-    statusText.textContent = '状态检查失败';
+    statusText.textContent = msg('statusChecking');
   }
 }
 
@@ -67,10 +72,10 @@ saveBtn.addEventListener('click', async () => {
   console.log('[RemoteF] 点击保存');
   try {
     await saveConfig();
-    showAlert('配置已保存', 'success');
+    showAlert(msg('configSaved') || 'Config saved', 'success');
   } catch (err) {
     console.error('[RemoteF] 保存失败:', err);
-    showAlert('保存失败', 'error');
+    showAlert(msg('saveFailed') || 'Save failed', 'error');
   }
 });
 
@@ -78,7 +83,7 @@ saveBtn.addEventListener('click', async () => {
 connectBtn.addEventListener('click', async () => {
   console.log('[RemoteF] 点击连接');
   connectBtn.disabled = true;
-  connectBtn.textContent = '连接中...';
+  connectBtn.textContent = msg('statusConnecting');
 
   try {
     // 先保存配置
@@ -89,19 +94,19 @@ connectBtn.addEventListener('click', async () => {
     const result = await chrome.runtime.sendMessage({ type: 'connect' });
     console.log('[RemoteF] connect 响应:', result);
 
-    showAlert('连接请求已发送', 'success');
+    showAlert(msg('connectSent') || 'Connect request sent', 'success');
 
     // 2秒后检查状态
     setTimeout(() => {
       checkStatus();
       connectBtn.disabled = false;
-      connectBtn.textContent = '立即连接';
+      connectBtn.textContent = msg('connectNow');
     }, 2000);
   } catch (err) {
     console.error('[RemoteF] 连接失败:', err);
-    showAlert('连接失败: ' + err.message, 'error');
+    showAlert(msg('connectFailed') + ': ' + err.message, 'error');
     connectBtn.disabled = false;
-    connectBtn.textContent = '立即连接';
+    connectBtn.textContent = msg('connectNow');
   }
 });
 
