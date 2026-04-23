@@ -34,7 +34,6 @@ function createPluginContext(pluginName, sendFunc) {
 export class PluginManager {
   constructor() {
     this.plugins = new Map();
-    this.contexts = new Map();
     this.eventListeners = new Set();
   }
 
@@ -276,23 +275,6 @@ export class PluginManager {
     }
   }
 
-  // ===== 上下文创建（用于服务端模块的 init/onEnable）=====
-  createContext(pluginName, sendFunc) {
-    const self = this;
-    return {
-      pluginName,
-      sendMessage: (msg) => {
-        sendFunc({
-          type: 'plugin_message',
-          payload: { pluginName, message: msg }
-        });
-      },
-      onMessage: (handler) => {
-        self.contexts.set(pluginName, handler);
-      }
-    };
-  }
-
   // ===== 状态管理 =====
   setStatus(pluginName, status, error = null) {
     const plugin = this.plugins.get(pluginName);
@@ -330,10 +312,6 @@ export class PluginManager {
 
   has(pluginName) {
     return this.plugins.has(pluginName);
-  }
-
-  getContextHandler(pluginName) {
-    return this.contexts.get(pluginName);
   }
 
   // ===== 从存储恢复 =====

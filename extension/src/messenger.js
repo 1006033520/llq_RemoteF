@@ -3,7 +3,6 @@
  * 处理 popup、options 等扩展页面与 background 的通信
  */
 
-import pluginManager from './plugin-manager.js';
 import wsClient from './ws-client.js';
 import storage from './storage.js';
 
@@ -68,21 +67,6 @@ export async function handlePluginPush(payload) {
   });
 }
 
-export function handlePluginMessage(payload) {
-  const { pluginName, message } = payload;
-  const handler = pluginManager.getContextHandler(pluginName);
-
-  if (handler) {
-    try {
-      handler(message);
-    } catch (err) {
-      console.error(`[RemoteF] 插件消息处理错误 (${pluginName}):`, err);
-    }
-  } else {
-    console.log(`[RemoteF] 未找到插件处理器: ${pluginName}`);
-  }
-}
-
 // ===== Chrome API 消息处理 =====
 
 export function setupMessageHandlers() {
@@ -139,6 +123,5 @@ export default {
   handlePluginList,
   requestPluginInstall,
   handlePluginPush,
-  handlePluginMessage,
   setupMessageHandlers
 };

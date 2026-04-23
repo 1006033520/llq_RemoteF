@@ -11,7 +11,6 @@ import {
   broadcastToPopup,
   handlePluginList,
   handlePluginPush,
-  handlePluginMessage,
   setupMessageHandlers
 } from './messenger.js';
 
@@ -708,10 +707,9 @@ function initMessageHandlers() {
   });
 
   wsClient.onMessage('plugin_message', (payload) => {
-    // 1. 通知 ClientAPI（用于请求-响应机制等）
+    // 插件消息统一由 content script（ISOLATED 世界）分发到 RemoteFRuntime.contexts
+    // background 只负责转发，不处理业务逻辑
     clientApi.handleServerMessage(payload);
-    // 2. 原有消息分发逻辑（兼容 plugin-manager 的 contexts）
-    handlePluginMessage(payload);
   });
 }
 
