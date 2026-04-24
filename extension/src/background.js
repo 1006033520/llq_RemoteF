@@ -11,7 +11,8 @@ import {
   broadcastToPopup,
   handlePluginList,
   handlePluginPush,
-  setupMessageHandlers
+  setupMessageHandlers,
+  registerPluginHandler
 } from './messenger.js';
 
 // ===== 消息路由 =====
@@ -24,6 +25,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleBackgroundMessage(message, sender, sendResponse) {
+
+  console.log('[Background] 收到消息:', message, '来自:', sender);
+
   const { type, payload } = message;
 
   switch (type) {
@@ -89,6 +93,30 @@ async function handleBackgroundMessage(message, sender, sendResponse) {
       return true;
     }
 
+    case 'to_plugin_message': {
+      try {
+        const { pluginName, message, tabId } = payload;
+        const results = await new Promise((resolve, reject) => {
+          chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            func: toPluginMessage,
+            args: [pluginName, message]
+          }, (results) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(results?.[0]?.result);
+            }
+          });
+        });
+        sendResponse(results || { success: true });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return true;
+    }
+
     case 'plugin_to_server': {
       // 客户端插件 → 服务端
       // 转发为 WebSocket 消息
@@ -116,6 +144,11 @@ async function handleBackgroundMessage(message, sender, sendResponse) {
       // 系统级输入事件：通过 CDP Input.dispatch 发送，isTrusted: true
       handleInputDispatch(payload, sender, sendResponse);
       return true;
+    }
+
+    case 'register_plugin_handler': {
+      console.log('[Background] 注册插件消息处理器:', payload);
+      registerPluginHandler(payload.tabId, payload.plugins);
     }
   }
 }
@@ -519,13 +552,13 @@ function executePluginInMainWorld(pluginName, pluginCode) {
         dispatch(eventType, params) {
           return new Promise((resolve) => {
             const requestId = `input_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-            
+
             // 设置一次性监听器接收响应
             const handler = (event) => {
               if (event.source !== window) return;
-              if (event.data?.source === 'remotef-isolated' 
-                  && event.data?.type === 'input_dispatch_response'
-                  && event.data.payload?.requestId === requestId) {
+              if (event.data?.source === 'remotef-isolated'
+                && event.data?.type === 'input_dispatch_response'
+                && event.data.payload?.requestId === requestId) {
                 window.removeEventListener('message', handler);
                 resolve(event.data.payload.result);
               }
@@ -602,7 +635,7 @@ function executePluginInMainWorld(pluginName, pluginCode) {
          */
         async swipe(fromX, fromY, toX, toY, options = {}) {
           const { steps = 10, stepDelay = 16 } = options;
-          
+
           // touchStart
           const start = await this.dispatch('touch', { type: 'touchStart', touchPoints: [{ x: fromX, y: fromY }] });
           if (!start.success) return start;
@@ -685,13 +718,22 @@ function executePluginInMainWorld(pluginName, pluginCode) {
         plugin.run(ctx, plugin.config);
       }
 
+      console.log(`[RemoteF] 插件 ${pluginName} 执行完成，已注入 MAIN 世界`, plugin);
+
       return { success: true, hasInit: typeof plugin.init === 'function', hasRun: typeof plugin.run === 'function' };
     }
-
     return { success: true, hasFactory: false };
   } catch (err) {
     console.error('[RemoteF Plugin Execute] Error:', err);
     return { success: false, error: err.message };
+  }
+}
+
+function toPluginMessage(pluginName, message) {
+  try {
+    window.__remotef_plugins[pluginName].onMessage(message);
+  } catch (err) {
+    console.error(`[RemoteF] 插件 ${pluginName} 处理消息时出错:`, err);
   }
 }
 
@@ -726,6 +768,7 @@ function initMessageHandlers() {
     clientApi.handleServerMessage(payload);
   });
 }
+
 
 // ===== 初始化 =====
 

@@ -5,9 +5,48 @@
 
 import wsClient from './ws-client.js';
 import storage from './storage.js';
+import pluginManager from './plugin-manager.js';
 
 // ===== Popup 通信 =====
 const popupListeners = new Set();
+
+const tabsPluginMap = new Map(); // tabId → Set(pluginName)
+
+// ===== Tab 生命周期监听：自动清理失效的 tabId =====
+
+// Tab 被关闭时清理
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabsPluginMap.has(tabId)) {
+    tabsPluginMap.delete(tabId);
+    console.log('[RemoteF Messenger] Tab 关闭，清理插件映射:', tabId);
+  }
+});
+
+// Tab 发生导航时清理（旧 content script 已卸载，新 content script 会在 init() 时重新注册）
+chrome.webNavigation.onCommitted.addListener((details) => {
+  const { tabId, frameId } = details;
+  // 只处理主 frame（忽略 iframe）
+  if (frameId !== 0) return;
+  // 页面刷新/导航时清理，tabId 保持不变，新 content script 加载后会重新注册
+  if (tabsPluginMap.has(tabId)) {
+    tabsPluginMap.delete(tabId);
+    console.log('[RemoteF Messenger] Tab 导航，清理插件映射:', tabId);
+  }
+});
+
+export function registerPluginHandler(tabId, pluginNames) {
+  tabsPluginMap.set(tabId, pluginNames);
+}
+
+export function findPluginTag(pluginName) {
+  const tabIds = [];
+  for (const [tabId, plugins] of tabsPluginMap.entries()) {
+    if (plugins == pluginName) {
+      tabIds.push(tabId);
+    }
+  }
+  return tabIds;
+}
 
 export function broadcastToPopup(message) {
   chrome.runtime.sendMessage({ type: 'popup_update', payload: message }).catch(() => {
@@ -123,5 +162,7 @@ export default {
   handlePluginList,
   requestPluginInstall,
   handlePluginPush,
-  setupMessageHandlers
+  setupMessageHandlers,
+  findPluginTag,
+  registerPluginHandler,
 };

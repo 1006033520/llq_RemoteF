@@ -620,6 +620,11 @@ module.exports = {
     });
   },
 
+
+  onMessage(msg){
+    console.log('[Example Plugin] 收到消息:', msg);
+  },
+
   /**
    * 销毁
    */

@@ -13,6 +13,7 @@
 
 import wsClient from './ws-client.js';
 import storage from './storage.js';
+import { findPluginTag } from './messenger.js';
 
 /**
  * 客户端 API 类
@@ -142,14 +143,30 @@ export class ClientAPI {
     }
 
     // 只分发给同名插件处理器
-    const handler = this.messageHandlers.get(pluginName);
-    if (handler) {
-      try {
-        handler(message);
-      } catch (err) {
-        console.error(`[ClientAPI] 插件 ${pluginName} 消息处理错误:`, err);
-      }
+    // const handler = this.messageHandlers.get(pluginName);
+    // if (handler) {
+    //   try {
+    //     handler(message);
+    //   } catch (err) {
+    //     console.error(`[ClientAPI] 插件 ${pluginName} 消息处理错误:`, err);
+    //   }
+    // }
+
+    const tagIds = findPluginTag(pluginName);
+    if (tagIds.length === 0) {
+      console.warn(`[ClientAPI] 未找到插件标签，无法分发消息: ${pluginName}`);
+      return;
     }
+    
+     tagIds.forEach(tabId => {
+      chrome.tabs.sendMessage(tabId, {
+        type: 'to_plugin_message',
+        target: 'content',
+        payload: { pluginName, message }
+      }).catch(err => {
+        console.error(`[ClientAPI] 发送消息给 ${pluginName} 失败:`, err);
+      });
+    });
   }
 
   // ===== 存储操作 =====

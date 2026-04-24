@@ -12,6 +12,7 @@ const RemoteFRuntime = {
   plugins: new Map(),
   contexts: new Map(), // pluginName → onMessage handler（ISOLATED 世界）
   currentUrl: '',
+  tabId: null,
 
   /**
    * 检查 URL 是否匹配给定的 match patterns
@@ -94,13 +95,28 @@ const RemoteFRuntime = {
     console.log('[RemoteF Runtime] 初始化...');
 
     this.currentUrl = window.location.href;
+    this.tabId = await this.getCurrentTabId();
     this.watchNavigation();
     this.setupMessageBridge();
 
     // 向 background 请求插件列表并执行
     await this.loadPlugins();
 
+    // 向 background 注册本 tab 的插件列表（用于路由服务端→客户端消息）
+    this.setupOnMessage();
+
     console.log('[RemoteF Runtime] 初始化完成');
+  },
+
+
+  setupOnMessage() {
+    console.log(`[RemoteF Runtime] 注册插件消息处理器: ${this.tabId}`, Array.from(this.plugins.keys()));
+    chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'register_plugin_handler',
+      payload: { tabId: this.tabId, plugins: Array.from(this.plugins.keys()) }
+    });
+
   },
 
   /**
@@ -114,8 +130,10 @@ const RemoteFRuntime = {
       if (event.source !== window) return;
       if (event.data?.source !== 'remotef-main') return;
 
+      console.log(`[RemoteF Runtime] 收到 MAIN 世界消息: ${this.tabId}`, event.data);
+
       const { type, payload } = event.data;
-      
+
       switch (type) {
         case 'plugin_message':
           // 插件发消息给同名服务端，通过 background → WebSocket
@@ -176,12 +194,6 @@ const RemoteFRuntime = {
           // 插件日志（从 MAIN 世界转发到控制台）
           console[payload.level || 'log'](`[${payload.pluginName}]`, ...payload.args);
           break;
-
-        case 'plugin_ready':
-          // 插件初始化完成通知
-          console.log(`[RemoteF Runtime] 插件 ${payload.pluginName} 已就绪`);
-          this.plugins.set(payload.pluginName, { ready: true });
-          break;
       }
     });
   },
@@ -212,8 +224,9 @@ const RemoteFRuntime = {
             continue;
           }
           await this.loadAndRunPlugin(plugin.name, plugin.code);
-        }
 
+          this.plugins.set(plugin.name, { ready: true });
+        }
         resolve();
       });
     });
@@ -233,7 +246,7 @@ const RemoteFRuntime = {
     try {
       // 通过 background 在 MAIN 世界执行插件代码
       const tabId = await this.getCurrentTabId();
-      
+
       const response = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
           target: 'background',
@@ -255,6 +268,34 @@ const RemoteFRuntime = {
       }
     } catch (err) {
       console.error(`[RemoteF Runtime] ${pluginName}: 加载失败:`, err.message);
+    }
+  },
+
+  async toPluginMessage(pluginName, message) {
+    console.log(`[RemoteF Runtime] 发送消息给插件: ${pluginName}`);
+
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          target: 'background',
+          type: 'to_plugin_message',
+          payload: { pluginName, message, tabId: this.tabId }
+        }, (res) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(res);
+          }
+        });
+      });
+
+      if (response?.success) {
+        console.log(`[RemoteF Runtime] 发送消息给 ${pluginName}: 执行成功`);
+      } else {
+        throw new Error(response?.error || 'Unknown error');
+      }
+    } catch (err) {
+      console.error(`[RemoteF Runtime] 发送消息给 ${pluginName}: 失败:`, err.message);
     }
   },
 
@@ -318,6 +359,10 @@ const RemoteFRuntime = {
         this.loadAndRunPlugin(payload.pluginName, code);
         break;
       }
+      case 'to_plugin_message': {
+        this.toPluginMessage(payload.pluginName, payload.message);
+        break;
+      }
     }
   }
 };
@@ -326,31 +371,31 @@ const RemoteFRuntime = {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'content') return;
 
-  const { type, payload } = message;
+  // const { type, payload } = message;
 
   // 服务端 → 客户端的消息
-  if (type === 'plugin_message') {
-    const { pluginName, message } = payload;
-    // 1. 先从 ISOLATED 世界的 contexts 取 handler 调用（注册点在这里）
-    const handler = RemoteFRuntime.contexts.get(pluginName);
-    if (handler) {
-      try {
-        handler(message);
-      } catch (err) {
-        console.error(`[RemoteF Runtime] 插件消息处理错误 (${pluginName}):`, err);
-      }
-    } else {
-      console.log(`[RemoteF Runtime] 未找到插件处理器: ${pluginName}`);
-    }
-    // 2. 同时转发到 MAIN 世界，供 ctx.onMessage 的 window.addEventListener 接收
-    window.postMessage({
-      source: 'remotef-isolated',
-      type: 'server_message',
-      payload
-    }, '*');
-    sendResponse({ success: true });
-    return;
-  }
+  // if (type === 'plugin_message') {
+  //   const { pluginName, message } = payload;
+  //   // 1. 先从 ISOLATED 世界的 contexts 取 handler 调用（注册点在这里）
+  //   const handler = RemoteFRuntime.contexts.get(pluginName);
+  //   if (handler) {
+  //     try {
+  //       handler(message);
+  //     } catch (err) {
+  //       console.error(`[RemoteF Runtime] 插件消息处理错误 (${pluginName}):`, err);
+  //     }
+  //   } else {
+  //     console.log(`[RemoteF Runtime] 未找到插件处理器: ${pluginName}`);
+  //   }
+  //   // 2. 同时转发到 MAIN 世界，供 ctx.onMessage 的 window.addEventListener 接收
+  //   window.postMessage({
+  //     source: 'remotef-isolated',
+  //     type: 'server_message',
+  //     payload
+  //   }, '*');
+  //   sendResponse({ success: true });
+  //   return;
+  // }
 
   RemoteFRuntime.handleMessage(message);
   sendResponse({ success: true });
