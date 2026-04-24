@@ -261,7 +261,7 @@
 
     async function refreshData() {
       try {
-        const res = await fetch(`/admin/plugin/${PLUGIN_NAME}/data`);
+        const res = await fetch(`./${PLUGIN_NAME}/data`);
         const data = await res.json();
 
         // 更新头部

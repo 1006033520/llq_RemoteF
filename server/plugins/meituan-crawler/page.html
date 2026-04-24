@@ -255,7 +255,7 @@
     let currentClientId = null;
 
     function api(path, options = {}) {
-      return fetch(`/api/plugins/${pluginName}${path}`, {
+      return fetch(`./${pluginName}${path}`, {
         headers: { 'Content-Type': 'application/json' },
         ...options,
         body: options.body ? JSON.stringify(options.body) : undefined
