@@ -30,12 +30,7 @@ module.exports = {
    */
   init(ctx) {
     console.log('[MeituanCrawler] 初始化');
-
-    // 监听服务端消息（AI 命令通道）
-    ctx.onMessage((message) => {
-      console.log('[MeituanCrawler] 收到服务端消息:', message);
-      this.handleServerMessage(ctx, message);
-    });
+    this._ctx = ctx; // 存储 ctx 供 onMessage 使用
 
     // 上报客户端就绪
     ctx.api.sendMessage({
@@ -44,6 +39,11 @@ module.exports = {
       plugin: 'meituan-crawler',
       version: '1.0.0'
     });
+  },
+
+  onMessage(message) {
+    console.log('[MeituanCrawler] 收到服务端消息:', message);
+    this.handleServerMessage(this._ctx, message);
   },
 
   /**
@@ -68,7 +68,7 @@ module.exports = {
     });
 
     // 定期上报数据
-    this.startPeriodicReport(ctx);
+    this.startPeriodicReport();
   },
 
   // ============================================================
@@ -254,7 +254,7 @@ module.exports = {
   /**
    * 处理来自服务端的 AI 命令
    */
-  async handleServerMessage(ctx, message) {
+  async handleServerMessage(message) {
     const { action, params, requestId } = message;
     let result;
 
@@ -446,11 +446,11 @@ module.exports = {
   // 辅助方法
   // ============================================================
 
-  startPeriodicReport(ctx) {
+  startPeriodicReport() {
     const interval = this.config.captureInterval || 5000;
     this._reportTimer = setInterval(() => {
       if (this.requests.length > 0) {
-        ctx.api.sendMessage({
+        this._ctx.api.sendMessage({
           type: 'periodic_report',
           timestamp: Date.now(),
           count: this.requests.length,
