@@ -42,7 +42,7 @@ export default {
     // ===== 数据查询 API =====
 
     // 获取最近抓取记录
-    app.get(`/api/plugins/${name}/captures`, (req, res) => {
+    app.get(`/captures`, (req, res) => {
       const limit = parseInt(req.query.limit) || 50;
       const urlContains = req.query.url || '';
       let captures = this.recentCaptures;
@@ -56,7 +56,7 @@ export default {
     });
 
     // 获取抓取统计
-    app.get(`/api/plugins/${name}/stats`, (req, res) => {
+    app.get(`/stats`, (req, res) => {
       res.json({
         total: this.recentCaptures.length,
         clients: this.clients.size,
@@ -74,9 +74,9 @@ export default {
     // ===== AI 命令通道 =====
 
     // AI → 客户端：发送命令（异步，无需等待响应）
-    // POST /api/plugins/meituan-crawler/command
+    // POST /command
     // Body: { clientId, action, params }
-    app.post(`/api/plugins/${name}/command`, (req, res) => {
+    app.post(`/command`, (req, res) => {
       const { clientId, action, params } = req.body;
       if (!clientId || !action) {
         return res.status(400).json({ error: 'Missing clientId or action' });
@@ -92,9 +92,9 @@ export default {
     });
 
     // AI → 客户端：发送命令并等待响应（同步，最长 30 秒）
-    // POST /api/plugins/meituan-crawler/command-sync
+    // POST /command-sync
     // Body: { clientId, action, params, timeout? }
-    app.post(`/api/plugins/${name}/command-sync`, async (req, res) => {
+    app.post(`/command-sync`, async (req, res) => {
       const { clientId, action, params, timeout } = req.body;
       if (!clientId || !action) {
         return res.status(400).json({ error: 'Missing clientId or action' });
@@ -117,9 +117,9 @@ export default {
     });
 
     // AI → 所有安装本插件的客户端：广播命令
-    // POST /api/plugins/meituan-crawler/broadcast
+    // POST /broadcast
     // Body: { action, params }
-    app.post(`/api/plugins/${name}/broadcast`, (req, res) => {
+    app.post(`/broadcast`, (req, res) => {
       const { action, params } = req.body;
       if (!action) {
         return res.status(400).json({ error: 'Missing action' });
@@ -134,7 +134,7 @@ export default {
     });
 
     // 获取在线客户端列表
-    app.get(`/api/plugins/${name}/clients`, (req, res) => {
+    app.get(`/clients`, (req, res) => {
       const clients = pluginManager.serverApi.getClients();
       res.json({ total: clients.length, clients });
     });

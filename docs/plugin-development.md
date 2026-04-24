@@ -354,11 +354,11 @@ export default {
    * @param {PluginManager} pluginManager - 插件管理器
    */
   setupRoutes(app, pluginManager) {
-    app.get('/api/plugins/my-plugin/stats', (req, res) => {
+    app.get('/stats', (req, res) => {
       res.json({ count: this.requestCount });
     });
 
-    app.post('/api/plugins/my-plugin/action', (req, res) => {
+    app.post('/action', (req, res) => {
       // 处理请求...
       res.json({ success: true });
     });
@@ -504,17 +504,23 @@ ctx
 
 ### 自定义 API 路由
 
-通过 `setupRoutes(app, pluginManager)` 注册自定义路由：
+通过 `setupRoutes(app, pluginManager)` 注册自定义路由。插件的 router 自动挂载到 `/admin/plugin/:name` 下，插件内只需写相对路径：
+
+| 插件内路径 | 实际 URL |
+|---------|---------|
+| `/stats` | `/admin/plugin/my-plugin/stats` |
+| `/send` | `/admin/plugin/my-plugin/send` |
+| `/action` | `/admin/plugin/my-plugin/action` |
 
 ```javascript
 setupRoutes(app, pluginManager) {
-  // 自定义数据 API
-  app.get('/api/plugins/my-plugin/stats', (req, res) => {
+  // 自定义数据 API（路由自动挂载到 /admin/plugin/:name 下）
+  app.get('/stats', (req, res) => {
     res.json({ count: this.data.length });
   });
 
   // 通过 pluginManager 的 serverApi 发送消息给客户端
-  app.post('/api/plugins/my-plugin/send', (req, res) => {
+  app.post('/send', (req, res) => {
     const { clientId, message } = req.body;
     pluginManager.serverApi.sendToClient(clientId, this.manifest.name, message);
     res.json({ success: true });
@@ -783,8 +789,8 @@ export default {
   },
 
   setupRoutes(app, pluginManager) {
-    // HTTP API：向指定客户端发送操作指令
-    app.post('/api/plugins/auto-op/action', (req, res) => {
+    // HTTP API：向指定客户端发送操作指令（路由挂载到 /admin/plugin/auto-op/action）
+    app.post('/action', (req, res) => {
       const { clientId, action } = req.body;
       // action: { type: 'click', x: 100, y: 200 }
       //       | { type: 'swipe', fromX, fromY, toX, toY }

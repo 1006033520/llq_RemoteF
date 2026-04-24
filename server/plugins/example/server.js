@@ -36,7 +36,7 @@ export default {
    */
   setupRoutes(app, pluginManager) {
     // 获取请求记录
-    app.get(`/api/plugins/${this.manifest.name}/requests/count`, (req, res) => {
+    app.get(`/requests/count`, (req, res) => {
       res.json({
         count: this.recentRequests.length,
         requests: this.recentRequests.slice(-50)
@@ -44,7 +44,7 @@ export default {
     });
 
     // 发送消息给客户端
-    app.post(`/api/plugins/${this.manifest.name}/send`, (req, res) => {
+    app.post(`/send`, (req, res) => {
       const { clientId, message } = req.body;
       if (!clientId || !message) {
         return res.status(400).json({ error: 'Missing clientId or message' });

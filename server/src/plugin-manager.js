@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import express from 'express';
 import { ServerAPI } from './api.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -95,9 +96,11 @@ export class PluginManager {
     this.plugins.set(name, plugin);
     console.log(`✅ 插件 ${name} 已加载`);
 
-    // 如果插件有 setupRoutes 方法，自动注册路由
+    // 如果插件有 setupRoutes 方法，自动注册路由（使用 scoped router，限制在 /admin/plugin/:name 下）
     if (plugin.serverModule?.setupRoutes && this.app) {
-      plugin.serverModule.setupRoutes(this.app, this);
+      const pluginRouter = express.Router();
+      plugin.serverModule.setupRoutes(pluginRouter, this);
+      this.app.use(`/admin/plugin/${name}`, pluginRouter);
     }
 
     return plugin;
