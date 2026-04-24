@@ -254,7 +254,7 @@ module.exports = {
   /**
    * 处理来自服务端的 AI 命令
    */
-  async handleServerMessage(message) {
+  async handleServerMessage(ctx,message) {
     const { action, params, requestId } = message;
     let result;
 

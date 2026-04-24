@@ -41,7 +41,7 @@ export function registerPluginHandler(tabId, pluginNames) {
 export function findPluginTag(pluginName) {
   const tabIds = [];
   for (const [tabId, plugins] of tabsPluginMap.entries()) {
-    if (plugins == pluginName) {
+    if (plugins.includes(pluginName)) {
       tabIds.push(tabId);
     }
   }

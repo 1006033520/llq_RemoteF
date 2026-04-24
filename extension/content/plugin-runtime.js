@@ -110,6 +110,10 @@ const RemoteFRuntime = {
 
   setupOnMessage() {
     console.log(`[RemoteF Runtime] 注册插件消息处理器: ${this.tabId}`, Array.from(this.plugins.keys()));
+    if(this.plugins.size === 0) {
+      console.warn(`[RemoteF Runtime] 当前没有插件 ${this.tabId}`);
+      return;
+    }
     chrome.runtime.sendMessage({
       target: 'background',
       type: 'register_plugin_handler',
