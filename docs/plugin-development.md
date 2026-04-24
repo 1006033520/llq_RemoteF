@@ -142,16 +142,19 @@ module.exports = {
    * @param {object} ctx - 插件上下文
    */
   init(ctx) {
-    // 监听服务端消息
-    ctx.onMessage((message) => {
-      console.log('收到服务端消息:', message);
-    });
-
     // 发送消息给同名服务端插件
     ctx.api.sendMessage({
       type: 'client_ready',
       url: window.location.href
     });
+  },
+
+  /**
+   * 收到来自服务端同名插件的消息
+   * @param {object} message - 服务端发来的消息
+   */
+  onMessage(message) {
+    console.log('收到服务端消息:', message);
   },
 
   /**
@@ -183,7 +186,6 @@ module.exports = {
 ctx
 ├── pluginName           // 插件名（只读，系统注入）
 ├── sendMessage(msg)     // 发送消息给同名服务端插件（快捷方法）
-├── onMessage(callback)  // 监听来自同名服务端插件的消息
 ├── api                  // 插件 API 层
 │   ├── sendMessage(msg)              // 发送消息给同名服务端插件
 │   ├── getConnectionStatus()         // 获取连接状态 → Promise
@@ -552,10 +554,23 @@ WebSocket
 服务端插件 ctx.api.sendToClient(clientId, msg)
     │
     ▼
-WebSocket → Background → Content Script → window.postMessage
+WebSocket → wsClient.onMessage('plugin_message')
+    │ clientApi.handleServerMessage()
+    │ findPluginTag(pluginName)  // 查询 tabsPluginMap
+    ▼
+chrome.tabs.sendMessage(tabId, { type: 'to_plugin_message' })
     │
     ▼
-客户端插件 ctx.onMessage(callback) 收到消息
+Content Script (plugin-runtime.js, ISOLATED 世界)
+    │ toPluginMessage()
+    ▼
+chrome.runtime.sendMessage({ type: 'to_plugin_message' })
+    │
+    ▼
+Background Script (service worker)
+    │ chrome.scripting.executeScript({ world: 'MAIN' })
+    ▼
+客户端插件 onMessage(message) 收到消息  ← 插件对象的 onMessage 方法
 ```
 
 ### 系统级输入事件链路
@@ -628,18 +643,17 @@ Background Script (service worker)
 ```javascript
 module.exports = {
   init(ctx) {
-    // 监听服务端消息
-    ctx.onMessage((message) => {
-      if (message.type === 'ack') {
-        console.log('[Hello] 服务端确认:', message.text);
-      }
-    });
-
     // 通知服务端
     ctx.api.sendMessage({
       type: 'page_ready',
       url: window.location.href
     });
+  },
+
+  onMessage(message) {
+    if (message.type === 'ack') {
+      console.log('[Hello] 服务端确认:', message.text);
+    }
   },
 
   run(ctx) {
@@ -695,49 +709,53 @@ export default {
 ```javascript
 module.exports = {
   init(ctx) {
-    // 监听服务端指令
-    ctx.onMessage(async (message) => {
-      const msg = message?.message || message;
-
-      switch (msg.type) {
-        case 'click': {
-          // 点击指定坐标
-          const result = await ctx.input.click(msg.x, msg.y);
-          ctx.api.sendMessage({ type: 'done', action: 'click', result });
-          break;
-        }
-
-        case 'swipe': {
-          // 触摸滑动
-          const result = await ctx.input.swipe(
-            msg.fromX, msg.fromY,
-            msg.toX, msg.toY,
-            { steps: msg.steps || 20, stepDelay: 16 }
-          );
-          ctx.api.sendMessage({ type: 'done', action: 'swipe', result });
-          break;
-        }
-
-        case 'type': {
-          // 先点击输入框，再输入文本
-          await ctx.input.click(msg.x, msg.y);
-          await new Promise(r => setTimeout(r, 200));
-          const result = await ctx.input.type(msg.text, { delay: 60 });
-          ctx.api.sendMessage({ type: 'done', action: 'type', result });
-          break;
-        }
-
-        case 'press': {
-          // 按键
-          const result = await ctx.input.press(msg.key);
-          ctx.api.sendMessage({ type: 'done', action: 'press', result });
-          break;
-        }
-      }
-    });
-
     // 上报就绪
     ctx.api.sendMessage({ type: 'ready', url: window.location.href });
+  },
+
+  onMessage(message) {
+    const msg = message?.message || message;
+
+    switch (msg.type) {
+      case 'click': {
+        // 点击指定坐标
+        ctx.input.click(msg.x, msg.y).then(result => {
+          ctx.api.sendMessage({ type: 'done', action: 'click', result });
+        });
+        break;
+      }
+
+      case 'swipe': {
+        // 触摸滑动
+        ctx.input.swipe(
+          msg.fromX, msg.fromY,
+          msg.toX, msg.toY,
+          { steps: msg.steps || 20, stepDelay: 16 }
+        ).then(result => {
+          ctx.api.sendMessage({ type: 'done', action: 'swipe', result });
+        });
+        break;
+      }
+
+      case 'type': {
+        // 先点击输入框，再输入文本
+        ctx.input.click(msg.x, msg.y)
+          .then(() => new Promise(r => setTimeout(r, 200)))
+          .then(() => ctx.input.type(msg.text, { delay: 60 }))
+          .then(result => {
+            ctx.api.sendMessage({ type: 'done', action: 'type', result });
+          });
+        break;
+      }
+
+      case 'press': {
+        // 按键
+        ctx.input.press(msg.key).then(result => {
+          ctx.api.sendMessage({ type: 'done', action: 'press', result });
+        });
+        break;
+      }
+    }
   }
 };
 ```
@@ -801,7 +819,8 @@ export default {
 | 问题 | 原因 | 解决方式 |
 |------|------|---------|
 | 插件不执行 | URL 不匹配 `matches` | 检查客户端 manifest 的 `matches` 配置 |
-| 消息收不到 | 插件名不一致 | 确保主清单和客户端清单的 `name` 相同 |
+| 消息收不到 | 插件名不一致 / tabsPluginMap 未注册 | 确保主清单和客户端清单的 `name` 相同；确保 content script 正常加载并调用 `setupOnMessage()` |
+| 旧版 `ctx.onMessage(callback)` 不触发 | 已移除该 API | 使用插件对象的 `onMessage(message)` 方法接收服务端消息 |
 | CSP 报错 | 代码在 ISOLATED 世界执行 | 系统使用 `world: 'MAIN'` 绕过 CSP，确保走 `execute_plugin` 路径 |
 | `module.exports` 未定义 | 客户端代码使用 ES Module | 使用 `module.exports =` 或 `export default`，系统会自动转换 |
 | 端口匹配失败 | `matches` 中的端口未匹配 | 使用 `host:port` 格式，如 `http://localhost:8888/*` |
