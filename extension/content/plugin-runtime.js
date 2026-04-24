@@ -10,7 +10,6 @@
 // 创建插件运行时管理器
 const RemoteFRuntime = {
   plugins: new Map(),
-  contexts: new Map(), // pluginName → onMessage handler（ISOLATED 世界）
   currentUrl: '',
   tabId: null,
 
@@ -370,33 +369,6 @@ const RemoteFRuntime = {
 // 监听来自 background script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'content') return;
-
-  // const { type, payload } = message;
-
-  // 服务端 → 客户端的消息
-  // if (type === 'plugin_message') {
-  //   const { pluginName, message } = payload;
-  //   // 1. 先从 ISOLATED 世界的 contexts 取 handler 调用（注册点在这里）
-  //   const handler = RemoteFRuntime.contexts.get(pluginName);
-  //   if (handler) {
-  //     try {
-  //       handler(message);
-  //     } catch (err) {
-  //       console.error(`[RemoteF Runtime] 插件消息处理错误 (${pluginName}):`, err);
-  //     }
-  //   } else {
-  //     console.log(`[RemoteF Runtime] 未找到插件处理器: ${pluginName}`);
-  //   }
-  //   // 2. 同时转发到 MAIN 世界，供 ctx.onMessage 的 window.addEventListener 接收
-  //   window.postMessage({
-  //     source: 'remotef-isolated',
-  //     type: 'server_message',
-  //     payload
-  //   }, '*');
-  //   sendResponse({ success: true });
-  //   return;
-  // }
-
   RemoteFRuntime.handleMessage(message);
   sendResponse({ success: true });
 });

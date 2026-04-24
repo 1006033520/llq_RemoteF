@@ -194,20 +194,6 @@ function handleApiRequest(payload, sendResponse) {
       break;
     }
 
-    case 'onMessage': {
-      const { pluginName, handler } = params;
-      clientApi.onMessage(pluginName, handler);
-      sendResponse({ success: true });
-      break;
-    }
-
-    case 'offMessage': {
-      const { pluginName } = params;
-      clientApi.offMessage(pluginName);
-      sendResponse({ success: true });
-      break;
-    }
-
     default: {
       sendResponse({ error: `Unknown API method: ${method}` });
     }
@@ -318,20 +304,6 @@ function executePluginInMainWorld(pluginName, pluginCode) {
           type: 'plugin_message',
           payload: { pluginName, message }
         }, '*');
-      },
-
-      // 监听服务端消息
-      onMessage(callback) {
-        window.addEventListener('message', (event) => {
-          if (event.source !== window) return;
-          if (event.data?.source !== 'remotef-isolated') return;
-          if (event.data?.type === 'server_message') {
-            const msg = event.data.payload;
-            if (msg?.pluginName === pluginName || !msg?.pluginName) {
-              callback(msg?.message || msg);
-            }
-          }
-        });
       },
 
       // 插件 API（通过 postMessage → content script → chrome.runtime.sendMessage → background）

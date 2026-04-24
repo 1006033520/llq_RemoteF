@@ -21,8 +21,6 @@ import { findPluginTag } from './messenger.js';
  */
 export class ClientAPI {
   constructor() {
-    // 消息处理器注册表（插件名 → handler）
-    this.messageHandlers = new Map();
     // 请求-响应等待表（requestId → { resolve, reject, timer }）
     this.pendingRequests = new Map();
     // 请求超时时间（毫秒）
@@ -108,24 +106,7 @@ export class ClientAPI {
   }
 
   /**
-   * 注册消息处理器（只接收发给本插件的消息）
-   * @param {string} pluginName - 插件名（由系统注入）
-   * @param {function} handler - 消息处理函数 (message) => void
-   */
-  onMessage(pluginName, handler) {
-    this.messageHandlers.set(pluginName, handler);
-  }
-
-  /**
-   * 取消消息处理器
-   * @param {string} pluginName - 插件名
-   */
-  offMessage(pluginName) {
-    this.messageHandlers.delete(pluginName);
-  }
-
-  /**
-   * 处理来自服务端的插件消息（只分发给同名插件）
+   * 处理来自服务端的插件消息（通过 findPluginTag 路由到对应 tab）
    * @param {object} payload - { pluginName, message }
    */
   handleServerMessage(payload) {
@@ -142,23 +123,13 @@ export class ClientAPI {
       }
     }
 
-    // 只分发给同名插件处理器
-    // const handler = this.messageHandlers.get(pluginName);
-    // if (handler) {
-    //   try {
-    //     handler(message);
-    //   } catch (err) {
-    //     console.error(`[ClientAPI] 插件 ${pluginName} 消息处理错误:`, err);
-    //   }
-    // }
-
-    const tagIds = findPluginTag(pluginName);
-    if (tagIds.length === 0) {
+    const tabIds = findPluginTag(pluginName);
+    if (tabIds.length === 0) {
       console.warn(`[ClientAPI] 未找到插件标签，无法分发消息: ${pluginName}`);
       return;
     }
-    
-     tagIds.forEach(tabId => {
+
+    tabIds.forEach(tabId => {
       chrome.tabs.sendMessage(tabId, {
         type: 'to_plugin_message',
         target: 'content',
@@ -227,7 +198,13 @@ export class ClientAPI {
    * @param {string} pluginName - 插件名
    */
   cleanup(pluginName) {
-    this.messageHandlers.delete(pluginName);
+    // 清理该插件所有待处理的请求
+    for (const [requestId, pending] of this.pendingRequests) {
+      if (requestId.startsWith(`${pluginName}:`)) {
+        clearTimeout(pending.timer);
+        this.pendingRequests.delete(requestId);
+      }
+    }
   }
 }
 

@@ -26,12 +26,6 @@ module.exports = {
    */
   init(ctx) {
     console.log('[Example Plugin] 初始化');
-
-    // 监听来自服务端的消息
-    ctx.onMessage((message) => {
-      console.log('[Example Plugin] 收到服务端消息:', message);
-    });
-
     // 使用 ctx.api 发送消息给同名服务端插件
     ctx.api.sendMessage({
       type: 'client_ready',
@@ -621,6 +615,7 @@ module.exports = {
   },
 
 
+  // 监听服务端消息
   onMessage(msg){
     console.log('[Example Plugin] 收到消息:', msg);
   },
