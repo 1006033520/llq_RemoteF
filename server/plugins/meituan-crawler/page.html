@@ -162,8 +162,9 @@
   <div class="container">
     <div class="header">
       <h1>🍔 美团数据抓取</h1>
-      <span class="badge">v1.0.0</span>
+      <span class="badge">v1.1.0</span>
       <span class="badge" id="client-count">0 客户端</span>
+      <span class="badge" id="sync-badge" style="background:#6366f1">⇉ 同步中</span>
     </div>
 
     <div class="grid">
@@ -193,6 +194,39 @@
         <div class="client-list" id="client-list">
           <div class="empty">暂无连接客户端</div>
         </div>
+      </div>
+
+      <!-- sgDataServer 数据同步 -->
+      <div class="card grid-full">
+        <div class="card-title">⇉ 数据自动录入（sgDataServer）</div>
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-value" id="sync-total">0</div>
+            <div class="stat-label">同步总次数</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="color:#22c55e" id="sync-success">0</div>
+            <div class="stat-label">成功</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="color:#ef4444" id="sync-fail">0</div>
+            <div class="stat-label">失败</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="color:#f59e0b;font-size:0.8rem" id="sync-last">-</div>
+            <div class="stat-label">最后同步</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.75rem;flex-wrap:wrap">
+          <label style="font-size:0.8rem;color:#94a3b8">服务地址:</label>
+          <input type="text" id="sync-url" style="flex:1;min-width:200px;padding:0.4rem 0.6rem;background:#0f172a;border:1px solid rgba(148,163,184,0.2);border-radius:6px;color:#e2e8f0;font-size:0.8rem" placeholder="http://localhost:3200">
+          <label style="font-size:0.8rem;color:#94a3b8;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="sync-enabled" checked> 自动同步
+          </label>
+          <button class="btn btn-primary" id="sync-save">保存配置</button>
+          <button class="btn btn-secondary" id="sync-historical">全量同步历史数据</button>
+        </div>
+        <div id="sync-status" style="font-size:0.75rem;color:#64748b"></div>
       </div>
 
       <!-- AI 控制台 -->
@@ -292,6 +326,49 @@
       } else {
         clientList.innerHTML = '<div class="empty">暂无连接客户端</div>';
       }
+
+      // 刷新同步状态
+      await refreshSyncStats();
+    }
+
+    async function refreshSyncStats() {
+      try {
+        const syncConfig = await api('/sync-config');
+        const stats = syncConfig.stats || {};
+        const config = syncConfig.config || {};
+
+        document.getElementById('sync-total').textContent = stats.total || 0;
+        document.getElementById('sync-success').textContent = stats.success || 0;
+        document.getElementById('sync-fail').textContent = stats.fail || 0;
+
+        if (stats.lastSyncAt) {
+          const t = new Date(stats.lastSyncAt).toLocaleTimeString();
+          document.getElementById('sync-last').textContent = t;
+        }
+
+        document.getElementById('sync-url').value = config.serverUrl || 'http://localhost:3200';
+        document.getElementById('sync-enabled').checked = config.enabled !== false;
+
+        const badge = document.getElementById('sync-badge');
+        if (config.enabled) {
+          badge.textContent = '⇉ 同步中';
+          badge.style.background = '#6366f1';
+        } else {
+          badge.textContent = '⇉ 已暂停';
+          badge.style.background = '#64748b';
+        }
+
+        const statusEl = document.getElementById('sync-status');
+        if (stats.lastSyncResult === 'success') {
+          statusEl.innerHTML = '<span style="color:#22c55e">● 最近同步成功</span>';
+        } else if (stats.lastSyncResult) {
+          statusEl.innerHTML = `<span style="color:#ef4444">● ${stats.lastSyncResult}</span>`;
+        } else {
+          statusEl.innerHTML = '<span style="color:#64748b">○ 等待数据同步...</span>';
+        }
+      } catch (e) {
+        // 忽略
+      }
     }
 
     async function refreshCaptures() {
@@ -373,6 +450,41 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
       });
+    });
+
+    // 同步配置保存
+    document.getElementById('sync-save').addEventListener('click', async () => {
+      const serverUrl = document.getElementById('sync-url').value.trim();
+      const enabled = document.getElementById('sync-enabled').checked;
+      const result = await api('/sync-config', {
+        method: 'POST',
+        body: { enabled, serverUrl, syncOnStart: true }
+      });
+      if (result.success) {
+        alert('同步配置已保存');
+        refreshSyncStats();
+      }
+    });
+
+    // 全量同步历史数据
+    document.getElementById('sync-historical').addEventListener('click', async () => {
+      if (!confirm('确定要全量同步所有历史抓取数据到 sgDataServer？')) return;
+      const btn = document.getElementById('sync-historical');
+      btn.textContent = '同步中...';
+      btn.disabled = true;
+      try {
+        const result = await api('/sync-historical', { method: 'POST' });
+        if (result.success) {
+          alert(`全量同步完成！成功${result.stats?.success || 0}，失败${result.stats?.fail || 0}`);
+        } else {
+          alert('全量同步失败: ' + (result.error || '未知错误'));
+        }
+      } catch (e) {
+        alert('同步请求失败: ' + e.message);
+      }
+      btn.textContent = '全量同步历史数据';
+      btn.disabled = false;
+      refreshSyncStats();
     });
   </script>
 </body>

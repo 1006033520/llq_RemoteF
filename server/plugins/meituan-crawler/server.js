@@ -6,6 +6,7 @@
  * 2. 数据存储与查询
  * 3. AI 命令通道 - HTTP API 供 AI 调用，向指定客户端下发命令
  * 4. AI 命令响应收集
+ * 5. 自动同步业务数据到 sgDataServer 闪购竞品数据分析系统
  */
 
 import fs from 'node:fs';
@@ -15,11 +16,28 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ========== sgDataServer 同步配置 ==========
+const SG_DATA_CONFIG = {
+  enabled: true,                            // 是否启用自动同步
+  serverUrl: 'http://localhost:3200',       // sgDataServer 地址
+  apiPath: '/api/import/crawler',           // 导入API路径
+  syncOnStart: true,                        // 启动时是否同步历史未导入数据
+  // 需要同步的业务接口URL关键词
+  businessKeywords: [
+    '/quickbuy/v1/poi/food',
+    '/quickbuy/v1/poi/sputag/products',
+    '/quickbuy/v1/poi/product/smooth/render',
+    '/quickbuy/v2/poi/product/info',
+    '/wxapp/v1/poi/food',
+    '/wxapp/v1/poi/sputag/products',
+  ],
+};
+
 export default {
   manifest: {
     name: 'meituan-crawler',
-    version: '1.0.0',
-    description: '美团数据抓取插件'
+    version: '1.1.0',
+    description: '美团数据抓取插件 - 抓取接口数据、模拟触摸滑动、AI 操控页面、自动同步数据'
   },
 
   // 数据存储
@@ -32,6 +50,145 @@ export default {
 
   // AI 命令响应（用于同步等待响应）
   pendingAIResponses: new Map(),
+
+  // ========== sgDataServer 同步状态 ==========
+  syncStats: {
+    total: 0,          // 总同步次数
+    success: 0,        // 成功次数
+    fail: 0,           // 失败次数
+    lastSyncAt: null,   // 最后同步时间
+    lastSyncResult: null, // 最后同步结果
+  },
+  syncQueue: [],        // 待同步队列
+  isSyncing: false,     // 是否正在同步
+
+  /**
+   * 判断URL是否为业务接口（需要同步到sgDataServer）
+   */
+  isBusinessUrl(url) {
+    if (!url) return false;
+    return SG_DATA_CONFIG.businessKeywords.some(kw => url.includes(kw));
+  },
+
+  /**
+   * 同步单条抓取数据到 sgDataServer
+   */
+  async syncToSgData(captureData) {
+    if (!SG_DATA_CONFIG.enabled) return;
+
+    const { url, request, response } = captureData;
+
+    // 构造与 meituanParser 兼容的JSON格式
+    const payload = {
+      url,
+      method: captureData.method,
+      status: captureData.status,
+      statusText: captureData.statusText || '',
+      duration: captureData.duration || 0,
+      requestType: captureData.requestType,
+      timestamp: captureData.timestamp || Date.now(),
+      time: new Date(captureData.timestamp || Date.now()).toISOString(),
+      clientId: captureData.clientId,
+      request: request || null,
+      response: response || null
+    };
+
+    try {
+      const serverUrl = SG_DATA_CONFIG.serverUrl + SG_DATA_CONFIG.apiPath;
+      const res = await fetch(serverUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: payload, source: 'remoteF-crawler' }),
+        signal: AbortSignal.timeout(10000), // 10秒超时
+      });
+
+      const result = await res.json();
+      this.syncStats.total++;
+      if (result.code === 0) {
+        this.syncStats.success++;
+        this.syncStats.lastSyncResult = 'success';
+        const detail = result.data;
+        if (detail && detail.details && detail.details.length > 0) {
+          const d = detail.details[0];
+          console.log(`[MeituanCrawler→sgData] 同步成功: ${d.type} 商铺:${d.shop || 0} 商品:${d.products || 0} SKU:${d.skus || 0} 价格:${d.priceRecords || 0}`);
+        }
+      } else {
+        this.syncStats.fail++;
+        this.syncStats.lastSyncResult = `error: ${result.msg}`;
+        console.warn(`[MeituanCrawler→sgData] 同步失败: ${result.msg}`);
+      }
+    } catch (err) {
+      this.syncStats.fail++;
+      this.syncStats.lastSyncResult = `error: ${err.message}`;
+      // sgDataServer 可能未启动，不频繁报错
+      if (this.syncStats.total <= 3 || this.syncStats.total % 50 === 0) {
+        console.warn(`[MeituanCrawler→sgData] 同步异常: ${err.message}`);
+      }
+    }
+    this.syncStats.lastSyncAt = new Date().toISOString();
+  },
+
+  /**
+   * 处理同步队列（异步逐条处理，避免并发过多）
+   */
+  async processSyncQueue() {
+    if (this.isSyncing) return;
+    this.isSyncing = true;
+
+    while (this.syncQueue.length > 0) {
+      const data = this.syncQueue.shift();
+      await this.syncToSgData(data);
+    }
+
+    this.isSyncing = false;
+  },
+
+  /**
+   * 启动时同步历史未导入数据
+   * 扫描 dataDir 下的所有JSON文件，对业务接口数据推送到 sgDataServer
+   */
+  async syncHistoricalData() {
+    if (!SG_DATA_CONFIG.syncOnStart || !SG_DATA_CONFIG.enabled) return;
+
+    console.log('[MeituanCrawler→sgData] 开始同步历史数据...');
+    let syncCount = 0;
+    let skipCount = 0;
+
+    const walkDir = (dir) => {
+      if (!fs.existsSync(dir)) return;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walkDir(fullPath);
+        } else if (entry.name.endsWith('.json')) {
+          try {
+            const content = fs.readFileSync(fullPath, 'utf-8');
+            const jsonData = JSON.parse(content);
+            const url = jsonData.url || jsonData.request?.url || '';
+
+            if (this.isBusinessUrl(url)) {
+              this.syncQueue.push(jsonData);
+              syncCount++;
+            } else {
+              skipCount++;
+            }
+          } catch (e) {
+            // 忽略解析失败的文件
+          }
+        }
+      }
+    };
+
+    walkDir(this.dataDir);
+
+    console.log(`[MeituanCrawler→sgData] 发现 ${syncCount} 条业务数据待同步，${skipCount} 条非业务数据跳过`);
+
+    if (syncCount > 0) {
+      await this.processSyncQueue();
+      console.log(`[MeituanCrawler→sgData] 历史数据同步完成: 成功${this.syncStats.success} 失败${this.syncStats.fail}`);
+    }
+  },
 
   /**
    * 注册入口页 API 路由
@@ -67,15 +224,14 @@ export default {
           url: info.url,
           lastSeen: info.lastSeen,
           captureCount: info.captureCount
-        }))
+        })),
+        syncStats: this.syncStats
       });
     });
 
     // ===== AI 命令通道 =====
 
     // AI → 客户端：发送命令（异步，无需等待响应）
-    // POST /command
-    // Body: { clientId, action, params }
     app.post(`/command`, (req, res) => {
       const { clientId, action, params } = req.body;
       if (!clientId || !action) {
@@ -85,15 +241,12 @@ export default {
       const requestId = `ai_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       const message = { action, params, requestId, _from: 'ai' };
 
-      // 通过 pluginManager 发送命令给客户端
       pluginManager.serverApi.sendToClient(clientId, name, message);
 
       res.json({ success: true, requestId, clientId, action });
     });
 
     // AI → 客户端：发送命令并等待响应（同步，最长 30 秒）
-    // POST /command-sync
-    // Body: { clientId, action, params, timeout? }
     app.post(`/command-sync`, async (req, res) => {
       const { clientId, action, params, timeout } = req.body;
       if (!clientId || !action) {
@@ -104,10 +257,8 @@ export default {
       const message = { action, params, requestId, _from: 'ai' };
       const waitTimeout = Math.min(timeout || 30000, 60000);
 
-      // 发送命令
       pluginManager.serverApi.sendToClient(clientId, name, message);
 
-      // 等待响应
       try {
         const response = await this.waitForAIResponse(requestId, waitTimeout);
         res.json({ success: true, requestId, clientId, action, response });
@@ -117,8 +268,6 @@ export default {
     });
 
     // AI → 所有安装本插件的客户端：广播命令
-    // POST /broadcast
-    // Body: { action, params }
     app.post(`/broadcast`, (req, res) => {
       const { action, params } = req.body;
       if (!action) {
@@ -137,6 +286,38 @@ export default {
     app.get(`/clients`, (req, res) => {
       const clients = pluginManager.serverApi.getClients();
       res.json({ total: clients.length, clients });
+    });
+
+    // ===== sgDataServer 同步配置 API =====
+
+    // 获取同步配置和状态
+    app.get(`/sync-config`, (req, res) => {
+      res.json({
+        config: {
+          enabled: SG_DATA_CONFIG.enabled,
+          serverUrl: SG_DATA_CONFIG.serverUrl,
+          syncOnStart: SG_DATA_CONFIG.syncOnStart,
+          businessKeywords: SG_DATA_CONFIG.businessKeywords,
+        },
+        stats: this.syncStats,
+        queueSize: this.syncQueue.length
+      });
+    });
+
+    // 更新同步配置
+    app.post(`/sync-config`, (req, res) => {
+      const { enabled, serverUrl, syncOnStart } = req.body;
+      if (enabled !== undefined) SG_DATA_CONFIG.enabled = !!enabled;
+      if (serverUrl) SG_DATA_CONFIG.serverUrl = serverUrl;
+      if (syncOnStart !== undefined) SG_DATA_CONFIG.syncOnStart = !!syncOnStart;
+      res.json({ success: true, config: SG_DATA_CONFIG });
+    });
+
+    // 手动触发全量同步
+    app.post(`/sync-historical`, async (req, res) => {
+      this.syncHistoricalData()
+        .then(() => res.json({ success: true, stats: this.syncStats }))
+        .catch(err => res.json({ success: false, error: err.message }));
     });
 
     console.log(`[MeituanCrawler] 入口页 API 路由已注册`);
@@ -164,6 +345,12 @@ export default {
       fs.mkdirSync(this.dataDir, { recursive: true });
     }
     console.log('[MeituanCrawler] 已启动，数据目录:', this.dataDir);
+    console.log(`[MeituanCrawler→sgData] 自动同步${SG_DATA_CONFIG.enabled ? '已启用' : '已禁用'}，目标: ${SG_DATA_CONFIG.serverUrl}`);
+
+    // 延迟同步历史数据（等sgDataServer启动）
+    if (SG_DATA_CONFIG.syncOnStart && SG_DATA_CONFIG.enabled) {
+      setTimeout(() => this.syncHistoricalData(), 3000);
+    }
   },
 
   /**
@@ -220,6 +407,12 @@ export default {
       await this.saveCapture(ctx.clientId, msg);
       const client = this.clients.get(ctx.clientId);
       if (client) client.captureCount++;
+
+      // ★ 自动同步到 sgDataServer
+      if (this.isBusinessUrl(msg.url)) {
+        this.syncQueue.push({ ...msg, clientId: ctx.clientId });
+        this.processSyncQueue(); // 异步处理，不阻塞
+      }
       return;
     }
 
